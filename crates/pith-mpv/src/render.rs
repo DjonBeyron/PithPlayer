@@ -5,7 +5,7 @@
 
 use std::ffi::{CStr, CString, c_void};
 use std::ptr;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use libmpv2::Mpv;
 use libmpv2::render::{
@@ -64,8 +64,13 @@ pub struct RenderContext {
 unsafe impl Send for RenderContext {}
 unsafe impl Sync for RenderContext {}
 
-/// Контекст отрисовки для передачи в обратный вызов egui.
-pub type SharedRenderContext = Arc<RenderContext>;
+/// Слабая ссылка на контекст отрисовки для обратного вызова egui.
+///
+/// Именно слабая, а не `Arc`: egui хранит обратные вызовы дольше одного кадра,
+/// и сильная ссылка не давала бы освободить контекст при закрытии окна.
+/// Пока `mpv_render_context_free` не вызван, `mpv_terminate_destroy` ждёт его
+/// и приложение зависает.
+pub type SharedRenderContext = Weak<RenderContext>;
 
 impl RenderContext {
     /// Создаёт контекст отрисовки для уже запущенного движка.
@@ -134,8 +139,8 @@ impl Engine {
         Ok(())
     }
 
-    /// Контекст для передачи в обратный вызов отрисовки.
+    /// Слабая ссылка на контекст для обратного вызова отрисовки.
     pub fn shared_render_context(&self) -> Option<SharedRenderContext> {
-        self.render_context().cloned()
+        self.render_context().map(Arc::downgrade)
     }
 }

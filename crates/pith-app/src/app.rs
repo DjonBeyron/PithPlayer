@@ -161,6 +161,53 @@ impl PithApp {
         }
     }
 
+    /// Перехватывает закрытие окна и освобождает движок до уничтожения окна.
+    ///
+    /// Возвращает `true`, если закрытие обработано и остальную работу
+    /// кадра делать не нужно.
+    ///
+    /// Пока mpv держит загруженный файл, уничтожение окна зависает.
+    /// Поэтому первое закрытие отменяем, освобождаем движок и просим
+    /// закрыться заново — на следующем кадре освобождать уже нечего
+    /// и окно закрывается штатно.
+    fn handle_close_request(&mut self, ctx: &egui::Context) -> bool {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            return false;
+        }
+
+        if self.engine.is_none() {
+            // Движок уже освобождён — не мешаем закрытию.
+            return true;
+        }
+
+        tracing::debug!("запрос на закрытие окна, освобождаю движок");
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        self.shutdown_engine();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        true
+    }
+
+    /// Останавливает воспроизведение и освобождает движок.
+    ///
+    /// Вызывается при закрытии окна. Повторный вызов безвреден.
+    fn shutdown_engine(&mut self) {
+        let Some(engine) = self.engine.as_mut() else {
+            return;
+        };
+
+        // Сначала останавливаем декодирование: иначе mpv ждёт отрисовки
+        // очередного кадра, а освобождение контекста ждёт mpv.
+        engine.stop();
+        tracing::info!(
+            ссылок_на_контекст = engine.render_context_refs(),
+            "воспроизведение остановлено"
+        );
+
+        // Drop разбирает поля по порядку: сначала контекст отрисовки, затем mpv.
+        self.engine = None;
+        tracing::info!("движок освобождён");
+    }
+
     /// Разбор событий движка перед отрисовкой кадра.
     fn process_engine_events(&mut self) {
         let Some(engine) = self.engine.as_mut() else {
@@ -199,11 +246,37 @@ impl eframe::App for PithApp {
     /// Логика кадра: разбор событий движка и горячие клавиши.
     /// Рисовать здесь нельзя (требование eframe).
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.handle_close_request(ctx) {
+            return;
+        }
+
         self.process_engine_events();
-        ui::handle_hotkeys(self, ctx);
+    }
+
+    /// Освобождение движка до закрытия окна.
+    ///
+    /// Контекст отрисовки mpv держит ресурсы OpenGL. Если не уничтожить его
+    /// здесь, пока контекст GL ещё жив, приложение зависает при выходе.
+    /// Страховка: если закрытие пришло мимо кадра egui, освобождаем здесь.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.shutdown_engine();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Пользователь закрывает окно — освобождаем движок прямо здесь,
+        // пока контекст OpenGL и окно ещё живы.
+        //
+        // В `on_exit` делать это поздно: eframe до него не доходит.
+        // Контекст отрисовки mpv держит ресурсы OpenGL, и уничтожение окна
+        // блокируется, пока mpv их не отпустит, — приложение зависает.
+        if self.handle_close_request(ui.ctx()) {
+            return;
+        }
+
+        // Клавиши разбираются здесь, а не в `logic`: там кадр egui ещё
+        // не начат и `input()` не отдаёт нажатия.
+        ui::handle_hotkeys(self, ui.ctx());
+
         if let Some(message) = self.fatal_error.clone() {
             ui::show_fatal_error(ui, &message);
             return;

@@ -134,12 +134,14 @@ impl Engine {
             .set_property("pause", paused)
             .map_err(|e| MpvError::command("pause", e))?;
         self.state.paused = paused;
+        tracing::debug!(paused, "пауза переключена");
         Ok(())
     }
 
     /// Перемотка на абсолютную позицию в секундах.
     pub fn seek_absolute(&mut self, seconds: f64) -> Result<()> {
         let target = seconds.max(0.0);
+        tracing::debug!(target, "перемотка на позицию");
         self.mpv
             .command("seek", &[&target.to_string(), "absolute"])
             .map_err(|e| MpvError::command("seek", e))
@@ -147,6 +149,7 @@ impl Engine {
 
     /// Перемотка относительно текущей позиции.
     pub fn seek_relative(&mut self, delta_seconds: f64) -> Result<()> {
+        tracing::debug!(delta_seconds, "перемотка относительно текущей");
         self.mpv
             .command("seek", &[&delta_seconds.to_string(), "relative"])
             .map_err(|e| MpvError::command("seek", e))
@@ -229,6 +232,26 @@ impl Engine {
                 tracing::debug!("размеры кадра недоступны — окно не трогаем");
             }
         }
+    }
+
+    /// Останавливает воспроизведение и выгружает файл.
+    ///
+    /// Обязательно вызывать перед завершением работы: пока mpv декодирует
+    /// и ждёт отрисовки очередного кадра, освобождение контекста отрисовки
+    /// блокируется и приложение зависает при закрытии.
+    pub fn stop(&mut self) {
+        if let Err(e) = self.mpv.command("stop", &[]) {
+            tracing::warn!(error = %e, "не удалось остановить воспроизведение");
+        }
+        self.state.file_loaded = false;
+    }
+
+    /// Сколько ссылок на контекст отрисовки живо.
+    ///
+    /// Больше одной означает, что копия задержалась в обратном вызове egui
+    /// и контекст не освободится вовремя.
+    pub fn render_context_refs(&self) -> usize {
+        self.render_ctx.as_ref().map_or(0, Arc::strong_count)
     }
 
     /// Читает произвольное свойство. Нужно для замеров и диагностики.

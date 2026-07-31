@@ -18,6 +18,12 @@ pub fn paint(ui: &mut egui::Ui, rect: egui::Rect, context: SharedRenderContext) 
         rect,
         callback: std::sync::Arc::new(eframe::egui_glow::CallbackFn::new(
             move |info: PaintCallbackInfo, _painter| {
+                // Контекст мог быть освобождён при закрытии окна — тогда
+                // просто пропускаем кадр.
+                let Some(context) = context.upgrade() else {
+                    return;
+                };
+
                 let viewport = info.viewport_in_pixels();
                 let size = FrameSize::new(viewport.width_px, viewport.height_px);
 
