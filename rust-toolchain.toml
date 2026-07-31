@@ -1,0 +1,7 @@
+# В системе установлена Visual Studio без компонента C++, поэтому линкера MSVC
+# нет. Собираем GNU-цепочкой: MinGW уже установлен, а libmpv от shinchiro
+# поставляется с libmpv.dll.a — он линкуется GNU-линкером напрямую,
+# без генерации mpv.lib через lib.exe.
+[toolchain]
+channel = "stable-x86_64-pc-windows-gnu"
+components = ["clippy", "rustfmt"]

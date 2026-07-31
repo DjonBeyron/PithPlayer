@@ -1,0 +1,11 @@
+# Переводы строк в репозитории — LF, в рабочей копии — как принято в системе.
+* text=auto eol=lf
+
+# Скрипты PowerShell читаются Windows PowerShell 5.1, ему нужен CRLF.
+*.ps1 text eol=crlf
+
+# Двоичные файлы не трогаем.
+*.dll binary
+*.7z binary
+*.ico binary
+*.png binary

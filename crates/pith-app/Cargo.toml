@@ -1,0 +1,20 @@
+[package]
+name = "pith-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "pith-player"
+path = "src/main.rs"
+
+[dependencies]
+pith-mpv = { path = "../pith-mpv" }
+eframe.workspace = true
+egui.workspace = true
+glow.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rfd = "0.15"

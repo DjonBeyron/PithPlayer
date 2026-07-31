@@ -1,0 +1,6 @@
+# Сборка не должна зависеть от того, что лежит в PATH (PLAN.md §10).
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\PITH\\tools\\mingw64\\bin\\gcc.exe"
+# Здесь лежит libmpv.dll.a из SDK — см. README.md, раздел «Установка libmpv».
+rustflags = ["-L", "native=third_party/mpv/lib"]

@@ -1,0 +1,112 @@
+//! Опции запуска mpv.
+//!
+//! Режим аппаратного декодирования вынесен в отдельный тип: на этапе 0 нужно
+//! сравнить варианты на реальных 4К-файлах и зафиксировать выбор (PLAN.md §3).
+
+/// Режим аппаратного декодирования.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HwDec {
+    /// Нулевое копирование через `WGL_NV_DX_interop2` с откатом на копирование.
+    ///
+    /// Замеры этапа 0 на 4К HEVC HDR (RTX 3070 Ti): 63 % ядра против 115 %
+    /// у копирующего режима и 145 % у программного. Расширение есть не на
+    /// всех связках драйвер + GPU, поэтому в значении указан запасной режим:
+    /// mpv переберёт список сверху вниз и возьмёт первый работающий.
+    #[default]
+    ZeroCopy,
+
+    /// Декодирование на GPU с обратным копированием кадра.
+    /// Работает всегда, стоит лишнего процессорного времени.
+    Copy,
+
+    /// Программное декодирование. Только для диагностики: если картинка
+    /// испорчена в аппаратных режимах, этот покажет, дело в драйвере или нет.
+    Software,
+}
+
+impl HwDec {
+    /// Значение для опции mpv `hwdec`.
+    ///
+    /// Список через запятую — это порядок предпочтения, а не перечисление.
+    pub fn as_mpv_value(self) -> &'static str {
+        match self {
+            Self::ZeroCopy => "d3d11va,auto-copy",
+            Self::Copy => "auto-copy",
+            Self::Software => "no",
+        }
+    }
+
+    /// Название для интерфейса и отчёта о замерах.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ZeroCopy => "Аппаратное, без копирования (d3d11va с откатом)",
+            Self::Copy => "Аппаратное с копированием (auto-copy)",
+            Self::Software => "Программное (без ускорения)",
+        }
+    }
+
+    /// Все режимы по порядку предпочтения — для перебора при замерах.
+    pub fn all() -> [Self; 3] {
+        [Self::ZeroCopy, Self::Copy, Self::Software]
+    }
+}
+
+/// Настройки запуска движка.
+#[derive(Debug, Clone)]
+pub struct EngineOptions {
+    pub hwdec: HwDec,
+    /// Стартовая громкость, 0–100.
+    pub volume: i64,
+    /// Языки аудио по убыванию приоритета (опция `alang`).
+    pub audio_languages: Vec<String>,
+    /// Языки субтитров по убыванию приоритета (опция `slang`).
+    pub subtitle_languages: Vec<String>,
+}
+
+impl Default for EngineOptions {
+    fn default() -> Self {
+        Self {
+            hwdec: HwDec::default(),
+            volume: 80,
+            audio_languages: vec!["eng".into(), "en".into()],
+            subtitle_languages: vec!["eng".into(), "en".into()],
+        }
+    }
+}
+
+impl EngineOptions {
+    /// Пары «опция — значение» для передачи в mpv при создании.
+    ///
+    /// Здесь только то, что нельзя менять на лету. Всё остальное
+    /// выставляется свойствами уже после запуска.
+    pub fn to_mpv_options(&self) -> Vec<(&'static str, String)> {
+        vec![
+            // ===== Аппаратное ускорение =====
+            ("hwdec", self.hwdec.as_mpv_value().to_string()),
+            // ===== Свой интерфейс =====
+            // Штатный экранный интерфейс и подсказки mpv не нужны — рисуем сами.
+            ("osc", "no".into()),
+            ("osd-level", "0".into()),
+            ("input-default-bindings", "no".into()),
+            ("input-vo-keyboard", "no".into()),
+            // Окно создаёт приложение, mpv рисует в переданный контекст.
+            ("force-window", "no".into()),
+            // Не закрывать файл по достижении конца: нужно показать последний
+            // кадр и дать пользователю решить, что дальше.
+            ("keep-open", "yes".into()),
+            // ===== Качество и плавность =====
+            ("profile", "gpu-hq".into()),
+            ("cache", "yes".into()),
+            ("demuxer-max-bytes", "256MiB".into()),
+            // ===== Дорожки по умолчанию =====
+            ("alang", self.audio_languages.join(",")),
+            ("slang", self.subtitle_languages.join(",")),
+            // Подхват внешних субтитров и аудио рядом с видео.
+            ("sub-auto", "fuzzy".into()),
+            ("audio-file-auto", "fuzzy".into()),
+            // ===== Звук =====
+            ("volume", self.volume.to_string()),
+            ("volume-max", "150".into()),
+        ]
+    }
+}
