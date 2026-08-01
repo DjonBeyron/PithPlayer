@@ -101,6 +101,14 @@ impl PithApp {
         self.engine.as_ref()
     }
 
+    /// Отрезки, которые попадут в сохранённые фрагменты.
+    ///
+    /// Показываются на полосе перемотки жёлтым. Закладки появятся на
+    /// этапе 4 — до тех пор список пуст.
+    pub fn fragment_ranges(&self) -> Vec<crate::ui::FragmentRange> {
+        Vec::new()
+    }
+
     /// Открывает файл и запускает замер времени до первого кадра.
     pub fn open_file(&mut self, path: &str) {
         let Some(engine) = self.engine.as_mut() else {

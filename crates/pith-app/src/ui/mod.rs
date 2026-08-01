@@ -10,6 +10,7 @@ mod timeline;
 
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
+pub use timeline::FragmentRange;
 
 use crate::theme;
 

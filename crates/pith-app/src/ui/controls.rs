@@ -126,7 +126,9 @@ fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
         .map(|e| (e.state().position, e.state().duration))
         .unwrap_or((0.0, 0.0));
 
-    let response = timeline::show(ui, position, duration, width);
+    // Закладки появятся на этапе 4 — до тех пор жёлтых отрезков нет.
+    let fragments = app.fragment_ranges();
+    let response = timeline::show(ui, position, duration, width, &fragments);
 
     if let Some(target) = response.seek_to {
         app.seek_absolute(target);

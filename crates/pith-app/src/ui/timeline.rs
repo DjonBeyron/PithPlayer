@@ -14,6 +14,34 @@ const KNOB_RADIUS: f32 = 7.0;
 /// Высота области захвата — по ней ловится клик мимо тонкой полосы.
 const HIT_HEIGHT: f32 = 22.0;
 
+/// Отрезок, который попадёт в сохранённый фрагмент.
+///
+/// Считается от закладки: `[метка − отступ, метка − отступ + длительность]`.
+/// На полосе показывается жёлтым, чтобы было видно, что именно вырежется.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FragmentRange {
+    pub start: f64,
+    pub end: f64,
+}
+
+impl FragmentRange {
+    /// Диапазон фрагмента для закладки.
+    ///
+    /// `bookmark` — время метки, `buffer` — отступ назад от неё,
+    /// `duration` — длительность фрагмента. Всё в секундах.
+    ///
+    /// Вызывающая сторона появится на этапе 4 вместе с закладками;
+    /// сам расчёт готов и покрыт тестами.
+    #[allow(dead_code)]
+    pub fn from_bookmark(bookmark: f64, buffer: f64, duration: f64) -> Self {
+        let start = (bookmark - buffer).max(0.0);
+        Self {
+            start,
+            end: start + duration.max(0.0),
+        }
+    }
+}
+
 /// Что пользователь сделал с полосой.
 #[derive(Default)]
 pub struct TimelineResponse {
@@ -24,7 +52,15 @@ pub struct TimelineResponse {
 }
 
 /// Рисует полосу перемотки и возвращает действия пользователя.
-pub fn show(ui: &mut egui::Ui, position: f64, duration: f64, width: f32) -> TimelineResponse {
+///
+/// `fragments` — отрезки будущих фрагментов, подсвечиваются жёлтым.
+pub fn show(
+    ui: &mut egui::Ui,
+    position: f64,
+    duration: f64,
+    width: f32,
+    fragments: &[FragmentRange],
+) -> TimelineResponse {
     let mut result = TimelineResponse::default();
 
     let (rect, response) =
@@ -48,14 +84,18 @@ pub fn show(ui: &mut egui::Ui, position: f64, duration: f64, width: f32) -> Time
     // Фон полосы.
     painter.rect_filled(track, radius, theme::TIMELINE_TRACK);
 
-    // Пройденная часть.
+    // Отрезки будущих фрагментов — под индикатором воспроизведения,
+    // чтобы текущая позиция оставалась читаемой.
+    paint_fragments(painter, track, duration, fragments);
+
+    // Пройденная часть. Полупрозрачная, чтобы жёлтые отрезки просвечивали.
     let progress = (position / duration).clamp(0.0, 1.0) as f32;
     if progress > 0.0 {
         let played = egui::Rect::from_min_size(
             track.min,
             egui::vec2(track.width() * progress, track_height),
         );
-        painter.rect_filled(played, radius, theme::ACCENT);
+        painter.rect_filled(played, radius, theme::ACCENT.gamma_multiply(0.75));
     }
 
     // Кружок текущей позиции — только когда полоса под курсором.
@@ -88,6 +128,34 @@ pub fn show(ui: &mut egui::Ui, position: f64, duration: f64, width: f32) -> Time
     result
 }
 
+/// Рисует жёлтые отрезки будущих фрагментов.
+fn paint_fragments(
+    painter: &egui::Painter,
+    track: egui::Rect,
+    duration: f64,
+    fragments: &[FragmentRange],
+) {
+    for fragment in fragments {
+        let from = (fragment.start / duration).clamp(0.0, 1.0) as f32;
+        let to = (fragment.end / duration).clamp(0.0, 1.0) as f32;
+
+        if to <= from {
+            continue;
+        }
+
+        let left = track.min.x + track.width() * from;
+        let right = track.min.x + track.width() * to;
+
+        // Совсем узкий отрезок всё равно должен быть заметен.
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(left, track.min.y),
+            egui::pos2(right.max(left + 2.0), track.max.y),
+        );
+
+        painter.rect_filled(rect, 0.0, theme::FRAGMENT);
+    }
+}
+
 /// Время, соответствующее координате X на полосе.
 fn time_at(x: f32, track: egui::Rect, duration: f64) -> f64 {
     if track.width() <= 0.0 {
@@ -100,7 +168,7 @@ fn time_at(x: f32, track: egui::Rect, duration: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::time_at;
+    use super::{FragmentRange, time_at};
 
     fn track() -> egui::Rect {
         egui::Rect::from_min_size(egui::pos2(100.0, 0.0), egui::vec2(200.0, 5.0))
@@ -126,5 +194,35 @@ mod tests {
     fn нулевая_ширина_не_делит_на_ноль() {
         let empty = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(0.0, 5.0));
         assert_eq!(time_at(50.0, empty, 60.0), 0.0);
+    }
+
+    #[test]
+    fn закладка_без_отступа_даёт_отрезок_вперёд() {
+        // Метка на 15-й секунде, длительность 10 с — жёлтым будет 15…25.
+        let range = FragmentRange::from_bookmark(15.0, 0.0, 10.0);
+        assert_eq!(range.start, 15.0);
+        assert_eq!(range.end, 25.0);
+    }
+
+    #[test]
+    fn отступ_сдвигает_отрезок_назад() {
+        // Метка на 60-й, отступ 10 с, длительность 30 с — отрезок 50…80.
+        let range = FragmentRange::from_bookmark(60.0, 10.0, 30.0);
+        assert_eq!(range.start, 50.0);
+        assert_eq!(range.end, 80.0);
+    }
+
+    #[test]
+    fn отрезок_не_уходит_за_начало_файла() {
+        // Метка на 3-й секунде с отступом 10 с — начало обрезается нулём.
+        let range = FragmentRange::from_bookmark(3.0, 10.0, 20.0);
+        assert_eq!(range.start, 0.0);
+        assert_eq!(range.end, 20.0);
+    }
+
+    #[test]
+    fn нулевая_длительность_даёт_пустой_отрезок() {
+        let range = FragmentRange::from_bookmark(15.0, 0.0, 0.0);
+        assert_eq!(range.start, range.end);
     }
 }
