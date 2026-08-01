@@ -1,6 +1,4 @@
 //! Pith Player v5 — точка входа.
-//!
-//! Этап 0: движок, окно, воспроизведение, замеры (PLAN.md §7).
 
 // Не открывать консоль в релизной сборке на Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -12,6 +10,7 @@ mod logging;
 mod theme;
 mod ui;
 mod video;
+mod window;
 
 use app::PithApp;
 
@@ -34,7 +33,10 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Pith Player")
             .with_inner_size([1280.0, 720.0])
-            .with_min_inner_size([480.0, 320.0]),
+            // Минимум согласован с подгонкой окна под форму видео:
+            // уже этого панель управления не помещается (window.rs).
+            .with_min_inner_size([380.0, 260.0])
+            .with_transparent(false),
         renderer: eframe::Renderer::Glow,
         // Завершаться сразу из цикла событий, а не возвращаться в main.
         //

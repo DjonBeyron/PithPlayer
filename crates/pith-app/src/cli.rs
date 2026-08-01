@@ -14,6 +14,8 @@ pub struct Args {
     pub hwdec: Option<HwDec>,
     /// Скрыть панель замеров.
     pub hide_metrics: bool,
+    /// Не подгонять окно под форму видео.
+    pub no_fit_window: bool,
 }
 
 /// Текст справки.
@@ -26,7 +28,16 @@ Pith Player v5
 Параметры:
   --hwdec=<режим>   Режим декодирования: zero-copy | copy | software
   --no-metrics      Скрыть панель замеров
+  --no-fit-window   Не подгонять окно под форму видео
   --help            Показать эту справку
+
+Управление:
+  Пробел            Пауза / продолжить
+  ← →               Перемотка на 5 с (Shift — 1 с, Ctrl — 1 мин)
+  ↑ ↓               Громкость
+  Esc, F            Полноэкранный режим
+  [ ]               Скорость воспроизведения
+  Backspace         Обычная скорость
 
 Переменные окружения:
   PITH_LOG          Уровень логов: error | warn | info | debug | trace
@@ -46,6 +57,8 @@ impl Args {
                 }
             } else if arg == "--no-metrics" {
                 parsed.hide_metrics = true;
+            } else if arg == "--no-fit-window" {
+                parsed.no_fit_window = true;
             } else if !arg.starts_with("--") && parsed.file.is_none() {
                 parsed.file = Some(arg);
             }

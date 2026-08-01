@@ -11,6 +11,10 @@ use crate::error::{MpvError, Result};
 use crate::options::EngineOptions;
 use crate::render::RenderContext;
 
+/// Границы скорости воспроизведения.
+pub const MIN_SPEED: f64 = 0.25;
+pub const MAX_SPEED: f64 = 4.0;
+
 /// Состояние воспроизведения для отрисовки интерфейса.
 ///
 /// Все поля — «последнее известное»: если mpv ещё не сообщил значение,
@@ -25,6 +29,8 @@ pub struct PlaybackState {
     /// Файл загружен и готов к воспроизведению.
     pub file_loaded: bool,
     pub volume: i64,
+    /// Скорость воспроизведения: 1.0 — обычная.
+    pub speed: f64,
     /// Отображаемая ширина кадра с учётом поворота (`video-params/dw`).
     pub display_width: i64,
     /// Отображаемая высота кадра с учётом поворота (`video-params/dh`).
@@ -82,6 +88,7 @@ impl Engine {
             mpv: Box::new(mpv),
             state: PlaybackState {
                 volume: options.volume,
+                speed: 1.0,
                 ..Default::default()
             },
         })
@@ -165,6 +172,22 @@ impl Engine {
         Ok(())
     }
 
+    /// Скорость воспроизведения.
+    ///
+    /// Ограничена разумными пределами: звук за их границами превращается
+    /// в кашу, а mpv начинает ронять кадры.
+    pub fn set_speed(&mut self, speed: f64) -> Result<()> {
+        let clamped = speed.clamp(MIN_SPEED, MAX_SPEED);
+
+        self.mpv
+            .set_property("speed", clamped)
+            .map_err(|e| MpvError::command("speed", e))?;
+
+        self.state.speed = clamped;
+        tracing::debug!(speed = clamped, "скорость изменена");
+        Ok(())
+    }
+
     /// Разбирает очередь событий mpv без блокировки.
     ///
     /// Вызывается каждый кадр интерфейса.
@@ -210,6 +233,9 @@ impl Engine {
         }
         if let Ok(v) = self.mpv.get_property::<i64>("volume") {
             self.state.volume = v;
+        }
+        if let Ok(v) = self.mpv.get_property::<f64>("speed") {
+            self.state.speed = v;
         }
     }
 

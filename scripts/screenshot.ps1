@@ -17,7 +17,10 @@ public class WinShot {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
 }
 "@
 if (-not ("WinShot" -as [type])) { Add-Type -TypeDefinition $source }
@@ -25,8 +28,27 @@ if (-not ("WinShot" -as [type])) { Add-Type -TypeDefinition $source }
 $proc = Start-Process -FilePath $Exe -ArgumentList "`"$File`"" -PassThru
 Start-Sleep -Seconds $Wait
 
-[WinShot]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
-Start-Sleep -Seconds 2
+# Windows не всегда отдаёт передний план по первому требованию: без проверки
+# снимок захватит чужие окна, лежащие поверх плеера, и это легко принять
+# за неисправность самого плеера.
+$foreground = $false
+for ($i = 0; $i -lt 10; $i++) {
+    [WinShot]::ShowWindow($proc.MainWindowHandle, 5) | Out-Null   # SW_SHOW
+    [WinShot]::BringWindowToTop($proc.MainWindowHandle) | Out-Null
+    [WinShot]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+    Start-Sleep -Milliseconds 400
+
+    if ([WinShot]::GetForegroundWindow() -eq $proc.MainWindowHandle) {
+        $foreground = $true
+        break
+    }
+}
+
+if (-not $foreground) {
+    Write-Warning "Окно плеера не удалось вывести на передний план — снимок может захватить чужие окна"
+}
+
+Start-Sleep -Milliseconds 800
 
 $rect = New-Object WinShot+RECT
 [WinShot]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null

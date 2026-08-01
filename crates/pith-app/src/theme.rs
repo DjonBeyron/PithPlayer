@@ -28,8 +28,10 @@ pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 200);
 /// Неактивные элементы.
 pub const TEXT_DISABLED: Color32 = Color32::from_rgb(100, 100, 100);
 
-/// Акцент: выделение, активные элементы.
+/// Акцент: выделение, активные элементы, пройденная часть полосы.
 pub const ACCENT: Color32 = Color32::from_rgb(100, 200, 255);
+/// Незаполненная часть полосы перемотки.
+pub const TIMELINE_TRACK: Color32 = Color32::from_rgb(90, 90, 90);
 /// Успешное завершение.
 pub const SUCCESS: Color32 = Color32::from_rgb(100, 200, 100);
 /// Ошибка.

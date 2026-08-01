@@ -3,6 +3,8 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod viewport;
+
 use pith_mpv::{Engine, EngineEvent, EngineOptions, HwDec};
 
 use crate::bench::Metrics;
@@ -19,6 +21,19 @@ pub struct PithApp {
     pub show_metrics: bool,
     /// Перемотка ожидает подтверждения — нужна для замера её длительности.
     seek_pending: bool,
+    /// Полноэкранный режим.
+    fullscreen: bool,
+    /// Когда мышь двигалась последний раз — по этому прячется панель.
+    last_pointer_activity: f64,
+    /// Подгонять ли окно под форму видео.
+    fit_window_enabled: bool,
+    /// Пользователь менял размер окна вручную — больше не навязываем подгонку.
+    window_resized_by_user: bool,
+    /// Размер окна, который мы задали сами: помогает отличить свой ресайз
+    /// от пользовательского.
+    expected_window_size: Option<egui::Vec2>,
+    /// Файл только что загружен — нужно подогнать окно в ближайшем кадре.
+    fit_window_pending: bool,
 }
 
 impl PithApp {
@@ -38,6 +53,12 @@ impl PithApp {
             hwdec,
             show_metrics: !args.hide_metrics,
             seek_pending: false,
+            fullscreen: false,
+            last_pointer_activity: 0.0,
+            fit_window_enabled: !args.no_fit_window,
+            window_resized_by_user: false,
+            expected_window_size: None,
+            fit_window_pending: false,
         };
 
         match Self::start_engine(cc, &options) {
@@ -78,10 +99,6 @@ impl PithApp {
 
     pub fn engine(&self) -> Option<&Engine> {
         self.engine.as_ref()
-    }
-
-    pub fn engine_mut(&mut self) -> Option<&mut Engine> {
-        self.engine.as_mut()
     }
 
     /// Открывает файл и запускает замер времени до первого кадра.
@@ -161,6 +178,33 @@ impl PithApp {
         }
     }
 
+    pub fn set_volume(&mut self, volume: i64) {
+        if let Some(engine) = self.engine.as_mut()
+            && let Err(e) = engine.set_volume(volume)
+        {
+            tracing::warn!(error = %e, "не удалось изменить громкость");
+        }
+    }
+
+    /// Меняет скорость на `delta` относительно текущей.
+    pub fn adjust_speed(&mut self, delta: f64) {
+        if let Some(engine) = self.engine.as_mut() {
+            let target = engine.state().speed + delta;
+            if let Err(e) = engine.set_speed(target) {
+                tracing::warn!(error = %e, "не удалось изменить скорость");
+            }
+        }
+    }
+
+    /// Возвращает обычную скорость воспроизведения.
+    pub fn reset_speed(&mut self) {
+        if let Some(engine) = self.engine.as_mut()
+            && let Err(e) = engine.set_speed(1.0)
+        {
+            tracing::warn!(error = %e, "не удалось сбросить скорость");
+        }
+    }
+
     /// Перехватывает закрытие окна и освобождает движок до уничтожения окна.
     ///
     /// Возвращает `true`, если закрытие обработано и остальную работу
@@ -214,6 +258,8 @@ impl PithApp {
             return;
         };
 
+        let mut file_loaded = false;
+
         for event in engine.pump_events() {
             match event {
                 EngineEvent::FileLoaded => {
@@ -226,6 +272,7 @@ impl PithApp {
                         hwdec_active = %active_hwdec,
                         "файл загружен"
                     );
+                    file_loaded = true;
                 }
                 EngineEvent::EndFile => tracing::debug!("файл закончился"),
                 EngineEvent::Shutdown => tracing::info!("mpv завершает работу"),
@@ -233,6 +280,12 @@ impl PithApp {
         }
 
         engine.refresh_state();
+
+        if file_loaded {
+            // Подгонять окно будем в кадре: там доступны размеры экрана.
+            self.fit_window_pending = true;
+            self.window_resized_by_user = false;
+        }
 
         // Перемотка считается завершённой, когда mpv отдал новую позицию.
         if self.seek_pending {
@@ -257,6 +310,14 @@ impl eframe::App for PithApp {
     ///
     /// Контекст отрисовки mpv держит ресурсы OpenGL. Если не уничтожить его
     /// здесь, пока контекст GL ещё жив, приложение зависает при выходе.
+    /// Фон окна — непрозрачный чёрный.
+    ///
+    /// Задаётся явно: mpv не заполняет буфер там, где нет кадра — поля по
+    /// краям при несовпадении пропорций и момент до первого кадра.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 1.0]
+    }
+
     /// Страховка: если закрытие пришло мимо кадра egui, освобождаем здесь.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shutdown_engine();
@@ -276,6 +337,10 @@ impl eframe::App for PithApp {
         // Клавиши разбираются здесь, а не в `logic`: там кадр egui ещё
         // не начат и `input()` не отдаёт нажатия.
         ui::handle_hotkeys(self, ui.ctx());
+
+        self.track_manual_resize(ui.ctx());
+        self.fit_window_to_video(ui.ctx());
+        self.track_pointer_activity(ui.ctx());
 
         if let Some(message) = self.fatal_error.clone() {
             ui::show_fatal_error(ui, &message);
