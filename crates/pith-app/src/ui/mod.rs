@@ -6,10 +6,12 @@
 mod controls;
 mod hotkeys;
 mod metrics;
+mod resume;
 mod timeline;
 
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
+pub use resume::show as show_resume_offer;
 pub use timeline::FragmentRange;
 
 use crate::theme;

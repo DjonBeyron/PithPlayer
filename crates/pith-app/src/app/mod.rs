@@ -4,12 +4,18 @@
 //! размазано по семи partial-файлам `MainForm`.
 
 mod viewport;
+mod watching;
+
+use std::path::PathBuf;
 
 use pith_mpv::{Engine, EngineEvent, EngineOptions, HwDec};
+use pith_store::{DataPaths, WatchPositions};
 
 use crate::bench::Metrics;
 use crate::ui;
 use crate::video;
+
+pub use watching::ResumeOffer;
 
 pub struct PithApp {
     engine: Option<Engine>,
@@ -34,6 +40,14 @@ pub struct PithApp {
     expected_window_size: Option<egui::Vec2>,
     /// Файл только что загружен — нужно подогнать окно в ближайшем кадре.
     fit_window_pending: bool,
+    /// Позиции просмотра.
+    watch_positions: WatchPositions,
+    /// Путь к текущему файлу — ключ для позиции просмотра.
+    current_path: Option<PathBuf>,
+    /// Предложение продолжить просмотр, пока пользователь не ответил.
+    resume_offer: Option<ResumeOffer>,
+    /// Позиция, записанная в хранилище последней.
+    last_position_save: f64,
 }
 
 impl PithApp {
@@ -59,6 +73,10 @@ impl PithApp {
             window_resized_by_user: false,
             expected_window_size: None,
             fit_window_pending: false,
+            watch_positions: WatchPositions::load(DataPaths::discover()),
+            current_path: None,
+            resume_offer: None,
+            last_position_save: 0.0,
         };
 
         match Self::start_engine(cc, &options) {
@@ -111,6 +129,8 @@ impl PithApp {
 
     /// Открывает файл и запускает замер времени до первого кадра.
     pub fn open_file(&mut self, path: &str) {
+        self.set_current_path(path);
+
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
@@ -243,6 +263,9 @@ impl PithApp {
     ///
     /// Вызывается при закрытии окна. Повторный вызов безвреден.
     fn shutdown_engine(&mut self) {
+        // Позицию сохраняем до остановки: после неё mpv уже не отдаст время.
+        self.store_position();
+
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
@@ -293,7 +316,10 @@ impl PithApp {
             // Подгонять окно будем в кадре: там доступны размеры экрана.
             self.fit_window_pending = true;
             self.window_resized_by_user = false;
+            self.prepare_resume_offer();
         }
+
+        self.store_position_periodically();
 
         // Перемотка считается завершённой, когда mpv отдал новую позицию.
         if self.seek_pending {
@@ -373,6 +399,7 @@ impl eframe::App for PithApp {
             });
 
         ui::show_controls(self, ui.ctx());
+        ui::show_resume_offer(self, ui.ctx());
 
         if frame_painted {
             self.metrics.record_frame();
