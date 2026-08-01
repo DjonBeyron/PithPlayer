@@ -33,33 +33,67 @@ pub fn show_fatal_error(ui: &mut egui::Ui, message: &str) {
         });
 }
 
+/// Высота нижней панели управления.
+const CONTROLS_HEIGHT: f32 = 64.0;
+
+/// Суммарная ширина всего, кроме полосы перемотки: кнопки, время,
+/// громкость и отступы между ними. Остаток отдаётся полосе.
+const FIXED_CONTROLS_WIDTH: f32 = 420.0;
+
+/// Высота полосы перемотки.
+const TIMELINE_HEIGHT: f32 = 22.0;
+
+/// Ширина регулятора громкости.
+const VOLUME_WIDTH: f32 = 110.0;
+
 /// Нижняя панель управления и панель замеров.
-pub fn show_controls(app: &mut PithApp, ui: &mut egui::Ui) {
-    show_metrics_panel(app, ui.ctx());
+///
+/// Панель рисуется **поверх** видео отдельным слоем. Обычная панель egui
+/// не годится: mpv рисует кадр в весь буфер окна, а не в отведённый
+/// прямоугольник, и закрашивает всё, что было нарисовано до него.
+pub fn show_controls(app: &mut PithApp, ctx: &egui::Context) {
+    show_metrics_panel(app, ctx);
 
-    egui::Panel::bottom(egui::Id::new("controls"))
-        .exact_size(64.0)
-        .frame(egui::Frame::NONE.fill(theme::PANEL_BG).inner_margin(8.0))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Открыть").clicked() {
-                    app.open_file_dialog();
-                }
+    let screen = ctx.input(|i| i.viewport_rect());
+    let position = egui::pos2(screen.min.x, screen.max.y - CONTROLS_HEIGHT);
 
-                let paused = app.engine().map(|e| e.state().paused).unwrap_or(true);
+    egui::Area::new(egui::Id::new("controls"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(position)
+        .show(ctx, |ui| {
+            ui.set_width(screen.width());
 
-                if ui.button(if paused { "▶" } else { "❚❚" }).clicked() {
-                    app.toggle_pause();
-                }
+            egui::Frame::NONE
+                .fill(theme::PANEL_BG.gamma_multiply(0.92))
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    let inner_width = screen.width() - 20.0;
+                    ui.set_width(inner_width);
 
-                show_timeline(app, ui);
-                show_volume(app, ui);
-            });
+                    ui.horizontal(|ui| {
+                        if ui.button("Открыть").clicked() {
+                            app.open_file_dialog();
+                        }
+
+                        let paused = app.engine().map(|e| e.state().paused).unwrap_or(true);
+
+                        if ui.button(if paused { "▶" } else { "❚❚" }).clicked() {
+                            app.toggle_pause();
+                        }
+
+                        // Внутри плавающего слоя `available_width` не отражает
+                        // ширину окна, поэтому размер полосы считаем сами.
+                        let timeline_width = (inner_width - FIXED_CONTROLS_WIDTH).max(120.0);
+
+                        show_timeline(app, ui, timeline_width);
+                        show_volume(app, ui);
+                    });
+                });
         });
 }
 
 /// Полоса перемотки и текущее время.
-fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui) {
+fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
     let Some(engine) = app.engine() else {
         return;
     };
@@ -82,8 +116,12 @@ fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui) {
         return;
     }
 
+    // Ширину полосы egui берёт из настроек интервалов, а не из размера
+    // контейнера — задаём её явно.
+    ui.spacing_mut().slider_width = width;
+
     let slider = ui.add_sized(
-        [ui.available_width() - 160.0, 20.0],
+        [width, TIMELINE_HEIGHT],
         egui::Slider::new(&mut position, 0.0..=duration)
             .show_value(false)
             .trailing_fill(true),
@@ -105,9 +143,11 @@ fn show_volume(app: &mut PithApp, ui: &mut egui::Ui) {
 
     ui.label(egui::RichText::new("🔊").color(theme::TEXT_SECONDARY));
 
+    ui.spacing_mut().slider_width = VOLUME_WIDTH;
+
     if ui
         .add_sized(
-            [100.0, 20.0],
+            [VOLUME_WIDTH, TIMELINE_HEIGHT],
             egui::Slider::new(&mut volume, 0..=150).show_value(false),
         )
         .changed()

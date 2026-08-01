@@ -24,8 +24,12 @@ pub fn paint(ui: &mut egui::Ui, rect: egui::Rect, context: SharedRenderContext) 
                     return;
                 };
 
-                let viewport = info.viewport_in_pixels();
-                let size = FrameSize::new(viewport.width_px, viewport.height_px);
+                // Размер именно всего буфера окна, а не области обратного
+                // вызова: mpv рисует в нулевой framebuffer целиком и сам
+                // вписывает кадр по пропорциям. Если передать меньший
+                // размер, картинка займёт лишь часть окна.
+                let size =
+                    FrameSize::new(info.screen_size_px[0] as i32, info.screen_size_px[1] as i32);
 
                 // Ноль — буфер окна: mpv рисует прямо в текущий кадр.
                 if let Err(e) = context.render(0, size) {

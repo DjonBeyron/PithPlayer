@@ -282,9 +282,8 @@ impl eframe::App for PithApp {
             return;
         }
 
-        ui::show_controls(self, ui);
-
-        // Видео рисуется в центральной области, под элементами управления.
+        // Видео рисуется первым, на всю область окна. Элементы управления
+        // накладываются поверх отдельным слоем — иначе mpv их закрасит.
         let render_context = self.engine.as_ref().and_then(|e| e.shared_render_context());
         let mut frame_painted = false;
 
@@ -299,6 +298,8 @@ impl eframe::App for PithApp {
                     frame_painted = true;
                 }
             });
+
+        ui::show_controls(self, ui.ctx());
 
         if frame_painted {
             self.metrics.record_frame();

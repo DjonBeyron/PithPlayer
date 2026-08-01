@@ -9,6 +9,8 @@
 /portable_data/
 *.log
 
-# Временные файлы замеров
+# Временные файлы замеров и снимки экрана
 bench_*.err
 run_*.log
+shot*.png
+screenshot*.png
