@@ -3,6 +3,8 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod import_v4;
+mod playback;
 mod viewport;
 mod watching;
 
@@ -48,17 +50,35 @@ pub struct PithApp {
     resume_offer: Option<ResumeOffer>,
     /// Позиция, записанная в хранилище последней.
     last_position_save: f64,
+    /// Приём файлов от других запусков плеера.
+    instance: crate::single_instance::InstanceServer,
+    /// Итог переноса данных из версии 4 — показывается один раз.
+    migration: Option<pith_store::MigrationReport>,
 }
 
 impl PithApp {
     /// Создаёт приложение. Ошибка запуска движка не роняет программу —
     /// окно откроется и покажет причину.
-    pub fn new(cc: &eframe::CreationContext<'_>, args: crate::cli::Args) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        args: crate::cli::Args,
+        instance: crate::single_instance::InstanceServer,
+    ) -> Self {
         let hwdec = args.hwdec.unwrap_or_default();
         let options = EngineOptions {
             hwdec,
             ..Default::default()
         };
+
+        let data_paths = DataPaths::discover();
+        let mut watch_positions = WatchPositions::load(data_paths.clone());
+
+        // Первый запуск: переносим данные версии 4.
+        let migration = import_v4::run_once(
+            &data_paths,
+            &mut watch_positions,
+            args.import_from.as_deref(),
+        );
 
         let mut app = Self {
             engine: None,
@@ -73,10 +93,12 @@ impl PithApp {
             window_resized_by_user: false,
             expected_window_size: None,
             fit_window_pending: false,
-            watch_positions: WatchPositions::load(DataPaths::discover()),
+            watch_positions,
             current_path: None,
             resume_offer: None,
             last_position_save: 0.0,
+            instance,
+            migration,
         };
 
         match Self::start_engine(cc, &options) {
@@ -142,97 +164,6 @@ impl PithApp {
         }
     }
 
-    /// Диалог выбора файла.
-    pub fn open_file_dialog(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter(
-                "Видео и аудио",
-                &[
-                    "mkv", "mp4", "avi", "mov", "webm", "ts", "m2ts", "m4v", "flv", "wmv", "mpg",
-                    "mpeg", "vob", "ogv", "3gp", "mp3", "flac", "wav", "aac", "m4a", "opus",
-                ],
-            )
-            .add_filter("Все файлы", &["*"])
-            .pick_file()
-        {
-            self.open_file(&path.to_string_lossy());
-        }
-    }
-
-    /// Перемотка относительно текущей позиции с замером длительности.
-    pub fn seek_relative(&mut self, seconds: f64) {
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        self.metrics.mark_seek_start();
-        self.seek_pending = true;
-
-        if let Err(e) = engine.seek_relative(seconds) {
-            tracing::warn!(error = %e, "перемотка не удалась");
-            self.seek_pending = false;
-        }
-    }
-
-    /// Перемотка на абсолютную позицию.
-    pub fn seek_absolute(&mut self, seconds: f64) {
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        self.metrics.mark_seek_start();
-        self.seek_pending = true;
-
-        if let Err(e) = engine.seek_absolute(seconds) {
-            tracing::warn!(error = %e, "перемотка не удалась");
-            self.seek_pending = false;
-        }
-    }
-
-    pub fn toggle_pause(&mut self) {
-        if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.toggle_pause()
-        {
-            tracing::warn!(error = %e, "не удалось переключить паузу");
-        }
-    }
-
-    pub fn adjust_volume(&mut self, delta: i64) {
-        if let Some(engine) = self.engine.as_mut() {
-            let target = engine.state().volume + delta;
-            if let Err(e) = engine.set_volume(target) {
-                tracing::warn!(error = %e, "не удалось изменить громкость");
-            }
-        }
-    }
-
-    pub fn set_volume(&mut self, volume: i64) {
-        if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.set_volume(volume)
-        {
-            tracing::warn!(error = %e, "не удалось изменить громкость");
-        }
-    }
-
-    /// Меняет скорость на `delta` относительно текущей.
-    pub fn adjust_speed(&mut self, delta: f64) {
-        if let Some(engine) = self.engine.as_mut() {
-            let target = engine.state().speed + delta;
-            if let Err(e) = engine.set_speed(target) {
-                tracing::warn!(error = %e, "не удалось изменить скорость");
-            }
-        }
-    }
-
-    /// Возвращает обычную скорость воспроизведения.
-    pub fn reset_speed(&mut self) {
-        if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.set_speed(1.0)
-        {
-            tracing::warn!(error = %e, "не удалось сбросить скорость");
-        }
-    }
-
     /// Перехватывает закрытие окна и освобождает движок до уничтожения окна.
     ///
     /// Возвращает `true`, если закрытие обработано и остальную работу
@@ -281,6 +212,27 @@ impl PithApp {
         // Drop разбирает поля по порядку: сначала контекст отрисовки, затем mpv.
         self.engine = None;
         tracing::info!("движок освобождён");
+    }
+
+    /// Открывает файлы, присланные другими запусками плеера.
+    ///
+    /// Берём последний: если пользователь быстро открыл несколько файлов,
+    /// он ждёт именно тот, что кликнул последним.
+    fn accept_files_from_other_instances(&mut self, ctx: &egui::Context) {
+        let Some(path) = self
+            .instance
+            .pending_files()
+            .into_iter()
+            .rfind(|p| crate::single_instance::is_openable(p))
+        else {
+            return;
+        };
+
+        self.open_file(&path.to_string_lossy());
+
+        // Поднимаем окно: пользователь только что кликнул по файлу.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
     }
 
     /// Разбор событий движка перед отрисовкой кадра.
@@ -337,6 +289,7 @@ impl eframe::App for PithApp {
             return;
         }
 
+        self.accept_files_from_other_instances(ctx);
         self.process_engine_events();
     }
 
@@ -399,6 +352,7 @@ impl eframe::App for PithApp {
             });
 
         ui::show_controls(self, ui.ctx());
+        ui::show_migration_report(self, ui.ctx());
         ui::show_resume_offer(self, ui.ctx());
 
         if frame_painted {

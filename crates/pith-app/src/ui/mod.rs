@@ -6,11 +6,13 @@
 mod controls;
 mod hotkeys;
 mod metrics;
+mod migration;
 mod resume;
 mod timeline;
 
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
+pub use migration::show as show_migration_report;
 pub use resume::show as show_resume_offer;
 pub use timeline::FragmentRange;
 

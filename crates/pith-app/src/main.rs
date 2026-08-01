@@ -7,12 +7,14 @@ mod app;
 mod bench;
 mod cli;
 mod logging;
+mod single_instance;
 mod theme;
 mod ui;
 mod video;
 mod window;
 
 use app::PithApp;
+use pith_store::DataPaths;
 
 fn main() -> eframe::Result<()> {
     logging::init();
@@ -26,6 +28,14 @@ fn main() -> eframe::Result<()> {
     }
 
     let args = cli::Args::parse(raw_args);
+    let data_paths = DataPaths::discover();
+
+    // Второй запуск отдаёт файл работающему плееру и выходит.
+    let Some(instance) =
+        single_instance::become_primary_or_forward(&data_paths, args.file.as_deref())
+    else {
+        return Ok(());
+    };
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "запуск Pith Player");
 
@@ -48,12 +58,15 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "Pith Player",
         options,
         Box::new(move |cc| {
             theme::apply(&cc.egui_ctx);
-            Ok(Box::new(PithApp::new(cc, args)))
+            Ok(Box::new(PithApp::new(cc, args, instance)))
         }),
-    )
+    );
+
+    single_instance::release(&data_paths);
+    result
 }

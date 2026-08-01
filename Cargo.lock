@@ -2039,6 +2039,7 @@ dependencies = [
  "pith-mpv",
  "pith-store",
  "rfd",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]

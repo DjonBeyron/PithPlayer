@@ -16,6 +16,8 @@ pub struct Args {
     pub hide_metrics: bool,
     /// Не подгонять окно под форму видео.
     pub no_fit_window: bool,
+    /// Откуда переносить данные версии 4.
+    pub import_from: Option<String>,
 }
 
 /// Текст справки.
@@ -29,6 +31,8 @@ Pith Player v5
   --hwdec=<режим>   Режим декодирования: zero-copy | copy | software
   --no-metrics      Скрыть панель замеров
   --no-fit-window   Не подгонять окно под форму видео
+  --import-from=<папка>
+                    Откуда перенести данные версии 4
   --help            Показать эту справку
 
 Управление:
@@ -59,6 +63,8 @@ impl Args {
                 parsed.hide_metrics = true;
             } else if arg == "--no-fit-window" {
                 parsed.no_fit_window = true;
+            } else if let Some(dir) = arg.strip_prefix("--import-from=") {
+                parsed.import_from = Some(dir.to_string());
             } else if !arg.starts_with("--") && parsed.file.is_none() {
                 parsed.file = Some(arg);
             }

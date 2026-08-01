@@ -19,3 +19,6 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rfd = "0.15"
+
+[dev-dependencies]
+tempfile = "3"
