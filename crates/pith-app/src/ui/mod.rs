@@ -3,6 +3,7 @@
 //! Всё рисуется поверх видео отдельными слоями: mpv кладёт кадр в весь
 //! буфер окна и закрашивает то, что нарисовано до него (PLAN.md §3).
 
+mod bookmarks;
 mod controls;
 mod hotkeys;
 mod menu;
@@ -14,6 +15,7 @@ mod search;
 pub mod subtitles;
 mod timeline;
 
+pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
 pub use menu::show_items as show_menu_items;

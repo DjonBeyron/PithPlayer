@@ -51,6 +51,38 @@ impl SubtitleLayout {
     }
 }
 
+/// Настройки нарезки отрезков (PLAN.md §6.4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FragmentSettings {
+    /// Куда складывать вырезанные фрагменты.
+    pub output_dir: Option<std::path::PathBuf>,
+    /// Длительность фрагмента, секунды.
+    pub duration_sec: u32,
+    /// Отступ назад от метки, секунды.
+    pub buffer_sec: u32,
+    /// Перекодировать вместо перепаковки.
+    ///
+    /// По умолчанию выключено: перепаковка в десятки раз быстрее и не
+    /// теряет качества. Включается, когда нужен старт строго по метке
+    /// или целевая программа не принимает исходный кодек.
+    pub reencode: bool,
+    /// Сколько фрагментов резать одновременно. Ноль — определить самим.
+    pub parallel_jobs: usize,
+}
+
+impl Default for FragmentSettings {
+    fn default() -> Self {
+        Self {
+            output_dir: None,
+            duration_sec: 18,
+            buffer_sec: 5,
+            reencode: false,
+            parallel_jobs: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -70,6 +102,9 @@ pub struct Settings {
 
     /// Громкость, запоминается между запусками.
     pub volume: i64,
+
+    /// Настройки нарезки отрезков.
+    pub fragments: FragmentSettings,
 }
 
 impl Default for Settings {
@@ -82,6 +117,7 @@ impl Default for Settings {
             main_subtitle: SubtitleLayout::main(),
             secondary_subtitle: SubtitleLayout::secondary(),
             volume: 80,
+            fragments: FragmentSettings::default(),
         }
     }
 }

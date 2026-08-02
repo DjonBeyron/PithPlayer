@@ -3,7 +3,9 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod bookmarks;
 mod clipboard;
+mod extraction;
 mod import_v4;
 mod playback;
 mod search;
@@ -75,6 +77,12 @@ pub struct PithApp {
     selected_tracks: subtitles::SelectedTracks,
     /// Поиск по субтитрам.
     search: search::SearchState,
+    /// Закладки и списки отрезков.
+    bookmarks: pith_store::Bookmarks,
+    /// Открыта ли панель отрезков.
+    bookmarks_panel: bool,
+    /// Ход нарезки.
+    extraction: extraction::ExtractionState,
 }
 
 impl PithApp {
@@ -86,7 +94,8 @@ impl PithApp {
         instance: crate::single_instance::InstanceServer,
     ) -> Self {
         let data_paths = DataPaths::discover();
-        let settings = Settings::load(&data_paths);
+        let mut settings = Settings::load(&data_paths);
+        let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());
 
         let hwdec = args.hwdec.unwrap_or_default();
         let options = EngineOptions {
@@ -102,6 +111,8 @@ impl PithApp {
         let migration = import_v4::run_once(
             &data_paths,
             &mut watch_positions,
+            &mut settings,
+            &mut bookmarks,
             args.import_from.as_deref(),
         );
 
@@ -132,6 +143,9 @@ impl PithApp {
             tracks: Vec::new(),
             selected_tracks: subtitles::SelectedTracks::default(),
             search: search::SearchState::default(),
+            bookmarks,
+            bookmarks_panel: false,
+            extraction: extraction::ExtractionState::default(),
         };
 
         match Self::start_engine(cc, &options) {
@@ -172,14 +186,6 @@ impl PithApp {
 
     pub fn engine(&self) -> Option<&Engine> {
         self.engine.as_ref()
-    }
-
-    /// Отрезки, которые попадут в сохранённые фрагменты.
-    ///
-    /// Показываются на полосе перемотки жёлтым. Закладки появятся на
-    /// этапе 4 — до тех пор список пуст.
-    pub fn fragment_ranges(&self) -> Vec<crate::ui::FragmentRange> {
-        Vec::new()
     }
 
     /// Открывает файл и запускает замер времени до первого кадра.
@@ -309,6 +315,7 @@ impl PithApp {
         }
 
         self.poll_subtitle_extraction();
+        self.poll_extraction();
         self.refresh_subtitle_text();
         self.store_position_periodically();
 
@@ -406,6 +413,7 @@ impl eframe::App for PithApp {
 
         ui::show_subtitles(self, ui.ctx());
         ui::show_controls(self, ui.ctx());
+        ui::show_bookmarks_panel(self, ui.ctx());
         ui::show_search(self, ui.ctx());
         ui::show_notice(self, ui.ctx());
         ui::show_migration_report(self, ui.ctx());

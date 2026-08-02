@@ -2037,6 +2037,7 @@ dependencies = [
  "eframe",
  "egui",
  "glow 0.16.0",
+ "pith-fragments",
  "pith-mpv",
  "pith-store",
  "pith-subs",
@@ -2044,6 +2045,15 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "pith-fragments"
+version = "5.0.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.19",
+ "tracing",
 ]
 
 [[package]]

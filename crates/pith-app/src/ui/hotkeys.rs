@@ -28,6 +28,8 @@ struct Actions {
     copy_subtitle: bool,
     toggle_subtitles: bool,
     open_search: bool,
+    add_bookmark: bool,
+    remove_bookmark: bool,
 }
 
 pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
@@ -65,6 +67,12 @@ pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
     if actions.open_search {
         app.open_search();
     }
+    if actions.add_bookmark {
+        app.add_bookmark_here();
+    }
+    if actions.remove_bookmark {
+        app.remove_bookmark_here();
+    }
 }
 
 fn collect_actions(i: &egui::InputState) -> Actions {
@@ -101,9 +109,11 @@ fn collect_actions(i: &egui::InputState) -> Actions {
             Key::ArrowDown => actions.volume -= VOLUME_STEP,
             Key::CloseBracket => actions.speed += SPEED_STEP,
             Key::OpenBracket => actions.speed -= SPEED_STEP,
-            // Схема из v4: C копирует реплику субтитров.
+            // Схема из v4: C копирует реплику субтитров, T ставит закладку.
             Key::C => actions.copy_subtitle = true,
             Key::V => actions.toggle_subtitles = true,
+            Key::T if i.modifiers.shift => actions.remove_bookmark = true,
+            Key::T => actions.add_bookmark = true,
             _ => {}
         }
     }

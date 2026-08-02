@@ -13,6 +13,7 @@ path = "src/main.rs"
 pith-mpv = { path = "../pith-mpv" }
 pith-store = { path = "../pith-store" }
 pith-subs = { path = "../pith-subs" }
+pith-fragments = { path = "../pith-fragments" }
 eframe.workspace = true
 egui.workspace = true
 glow.workspace = true

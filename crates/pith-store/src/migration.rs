@@ -16,11 +16,18 @@ pub struct MigrationReport {
     pub positions_moved: usize,
     /// Сколько пропущено: файлов уже нет на диске либо запись не нужна.
     pub positions_skipped: usize,
+    /// Для скольких видео перенесены закладки.
+    pub bookmarks_moved: usize,
+    /// Перенесены ли настройки.
+    pub settings_moved: bool,
 }
 
 impl MigrationReport {
     pub fn is_empty(&self) -> bool {
-        self.positions_moved == 0 && self.positions_skipped == 0
+        self.positions_moved == 0
+            && self.positions_skipped == 0
+            && self.bookmarks_moved == 0
+            && !self.settings_moved
     }
 }
 

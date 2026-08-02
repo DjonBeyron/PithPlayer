@@ -1,9 +1,10 @@
-[workspace]
+﻿[workspace]
 resolver = "3"
 members = [
     "crates/pith-mpv",
     "crates/pith-store",
     "crates/pith-subs",
+    "crates/pith-fragments",
     "crates/pith-app",
 ]
 

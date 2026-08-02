@@ -31,6 +31,11 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
+    if ui.button("Отрезки…").clicked() {
+        app.toggle_bookmarks_panel();
+        ui.close();
+    }
+
     ui.separator();
 
     show_audio_tracks(app, ui);

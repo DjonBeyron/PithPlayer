@@ -16,7 +16,7 @@ const MARKER: &str = "migrated_from_v4";
 /// и настройки субтитров, номер вырастет — и перенос доделает недостающее
 /// даже у тех, кто уже запускал плеер. Без этого метка закрыла бы перенос
 /// навсегда после первой же стадии.
-const MIGRATION_STAGE: u32 = 1;
+const MIGRATION_STAGE: u32 = 2;
 
 /// Известные места, где лежат данные версии 4.
 const KNOWN_V4_DIRS: &[&str] = &[
@@ -31,6 +31,8 @@ const KNOWN_V4_DIRS: &[&str] = &[
 pub fn run_once(
     paths: &DataPaths,
     positions: &mut WatchPositions,
+    settings: &mut pith_store::Settings,
+    bookmarks: &mut pith_store::Bookmarks,
     explicit_dir: Option<&str>,
 ) -> Option<MigrationReport> {
     let marker = paths.root().join(MARKER);
@@ -53,7 +55,25 @@ pub fn run_once(
         return None;
     }
 
-    let report = migrate_watch_positions(&source.join("watch_positions.ini"), positions);
+    let mut report = migrate_watch_positions(&source.join("watch_positions.ini"), positions);
+
+    // Настройки переносим до закладок: длительность и отступ из них
+    // становятся значениями для перенесённых списков.
+    let settings_moved = pith_store::migrate_settings(&source.join("settings.ini"), settings);
+    let subtitles_moved =
+        pith_store::migrate_subtitle_priority(&source.join("subtitle_settings.ini"), settings);
+
+    if settings_moved || subtitles_moved {
+        settings.save(paths);
+        report.settings_moved = true;
+    }
+
+    report.bookmarks_moved = pith_store::migrate_bookmarks(
+        &source.join("bookmarks.json"),
+        bookmarks,
+        settings.fragments.duration_sec,
+        settings.fragments.buffer_sec,
+    );
 
     // Метку ставим в любом случае: повторять перенос не нужно, даже если
     // переносить было нечего.
@@ -114,7 +134,19 @@ mod tests {
         std::fs::write(dir.path().join(MARKER), MIGRATION_STAGE.to_string()).expect("метка");
 
         let mut positions = WatchPositions::load(paths.clone());
-        assert!(run_once(&paths, &mut positions, Some("C:\\что-угодно")).is_none());
+        let mut settings = pith_store::Settings::default();
+        let mut bookmarks = pith_store::Bookmarks::load(paths.clone());
+
+        assert!(
+            run_once(
+                &paths,
+                &mut positions,
+                &mut settings,
+                &mut bookmarks,
+                Some("C:\\что-угодно")
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -152,7 +184,16 @@ mod tests {
         let paths = DataPaths::with_root(dir.path());
 
         let mut positions = WatchPositions::load(paths.clone());
-        let report = run_once(&paths, &mut positions, Some("C:\\нет-такой-папки"));
+        let mut settings = pith_store::Settings::default();
+        let mut bookmarks = pith_store::Bookmarks::load(paths.clone());
+
+        let report = run_once(
+            &paths,
+            &mut positions,
+            &mut settings,
+            &mut bookmarks,
+            Some("C:\\нет-такой-папки"),
+        );
 
         assert!(report.is_none());
     }
