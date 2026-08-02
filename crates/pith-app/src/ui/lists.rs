@@ -80,6 +80,17 @@ fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
             action = Some(Action::Delete);
             ui.close();
         }
+
+        ui.separator();
+
+        if ui
+            .button("Настройки нарезки…")
+            .on_hover_text("Значения по умолчанию для новых списков")
+            .clicked()
+        {
+            action = Some(Action::FragmentSettings);
+            ui.close();
+        }
     })
     .response
     .on_hover_text("Действия со списком");
@@ -89,6 +100,7 @@ fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
         Some(Action::Settings) => app.open_list_settings_dialog(),
         Some(Action::Duplicate) => app.duplicate_active_list(),
         Some(Action::Delete) => app.delete_active_list(),
+        Some(Action::FragmentSettings) => app.open_fragment_settings(),
         None => {}
     }
 }
@@ -98,6 +110,7 @@ enum Action {
     Settings,
     Duplicate,
     Delete,
+    FragmentSettings,
 }
 
 /// Диалог создания и настройки списка.

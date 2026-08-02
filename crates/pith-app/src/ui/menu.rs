@@ -71,6 +71,13 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         app.toggle_fullscreen(ui.ctx());
         ui.close();
     }
+
+    ui.separator();
+
+    if ui.button("Настройки нарезки…").clicked() {
+        app.open_fragment_settings();
+        ui.close();
+    }
 }
 
 /// Переключение списка отрезков, не открывая панель.

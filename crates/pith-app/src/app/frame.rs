@@ -104,6 +104,7 @@ impl PithApp {
         ui::show_controls(self, ctx);
         ui::show_bookmarks_panel(self, ctx);
         ui::show_list_dialog(self, ctx);
+        ui::show_fragment_settings(self, ctx);
         ui::show_search(self, ctx);
         ui::show_notice(self, ctx);
         ui::show_migration_report(self, ctx);

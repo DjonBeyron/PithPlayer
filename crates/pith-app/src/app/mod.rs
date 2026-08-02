@@ -7,6 +7,7 @@ mod audio;
 mod bookmarks;
 mod clipboard;
 mod extraction;
+mod fragment_settings;
 mod frame;
 mod import_v4;
 mod lists;
@@ -24,6 +25,7 @@ use pith_store::{DataPaths, Settings, WatchPositions};
 use crate::bench::Metrics;
 
 use clipboard::Notice;
+pub use fragment_settings::FragmentSettingsDialog;
 pub use lists::ListDialog;
 
 /// Локальный путь, которого нет на диске.
@@ -104,6 +106,8 @@ pub struct PithApp {
     bookmarks_panel_pinned: bool,
     /// Открытый диалог работы со списком отрезков.
     list_dialog: Option<ListDialog>,
+    /// Открытый диалог общих настроек нарезки.
+    fragment_settings: Option<FragmentSettingsDialog>,
     /// Ход нарезки.
     extraction: extraction::ExtractionState,
 }
@@ -172,6 +176,7 @@ impl PithApp {
             bookmarks_panel: false,
             bookmarks_panel_pinned: false,
             list_dialog: None,
+            fragment_settings: None,
             extraction: extraction::ExtractionState::default(),
         };
 

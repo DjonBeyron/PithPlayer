@@ -5,6 +5,7 @@
 
 mod bookmarks;
 mod controls;
+mod fragment_settings;
 mod hotkeys;
 mod lists;
 mod menu;
@@ -18,6 +19,7 @@ mod timeline;
 
 pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
+pub use fragment_settings::show as show_fragment_settings;
 pub use hotkeys::handle_hotkeys;
 pub use lists::show_dialog as show_list_dialog;
 pub use menu::show_items as show_menu_items;

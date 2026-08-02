@@ -4,8 +4,8 @@
 #
 # Запуск: powershell -File scripts\lists_test.ps1 -File "видео.mkv"
 #
-# Воспроизведение ставится на паузу: снимок экрана на движущемся кадре
-# отстаёт от окна на несколько секунд и показывает уже неверное состояние.
+# Снимок берётся через `PrintWindow`, а не с экрана: копия экрана отстаёт
+# от окна на секунду-другую и показывает уже неверное состояние.
 
 param(
     [Parameter(Mandatory = $true)][string]$File,
@@ -17,6 +17,7 @@ Add-Type -AssemblyName System.Drawing
 
 $source = @"
 using System;
+using System.Drawing;
 using System.Runtime.InteropServices;
 public class ListsTest {
     [StructLayout(LayoutKind.Sequential)]
@@ -27,8 +28,17 @@ public class ListsTest {
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, int e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, int e);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
-    public static void Click() { mouse_event(0x0002,0,0,0,0); mouse_event(0x0004,0,0,0,0); }
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+
+    // Пауза между нажатием и отпусканием: мгновенный щелчок egui иногда
+    // не засчитывает.
+    public static void Click() {
+        mouse_event(0x0002,0,0,0,0);
+        System.Threading.Thread.Sleep(60);
+        mouse_event(0x0004,0,0,0,0);
+    }
     public static void RightClick() { mouse_event(0x0008,0,0,0,0); mouse_event(0x0010,0,0,0,0); }
+
     // Скан-код обязателен: winit берёт физическое положение клавиши,
     // а с нулевым скан-кодом оно не определяется.
     public static void Key(byte vk) {
@@ -37,16 +47,28 @@ public class ListsTest {
         System.Threading.Thread.Sleep(40);
         keybd_event(vk, scan, 0x0002, 0);
     }
+
+    // PW_RENDERFULLCONTENT = 2: без него окна с аппаратной отрисовкой
+    // отдают пустой прямоугольник.
+    public static void Shot(IntPtr h, string path) {
+        RECT r;
+        GetWindowRect(h, out r);
+        using (var bmp = new Bitmap(r.Right - r.Left, r.Bottom - r.Top))
+        using (var gfx = Graphics.FromImage(bmp)) {
+            IntPtr hdc = gfx.GetHdc();
+            PrintWindow(h, hdc, 2);
+            gfx.ReleaseHdc(hdc);
+            bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        }
+    }
 }
 "@
-if (-not ("ListsTest" -as [type])) { Add-Type -TypeDefinition $source }
+if (-not ("ListsTest" -as [type])) {
+    Add-Type -TypeDefinition $source -ReferencedAssemblies System.Drawing
+}
 
-function Save-Shot($rect, $name) {
-    $bmp = New-Object System.Drawing.Bitmap ($rect.Right - $rect.Left), ($rect.Bottom - $rect.Top)
-    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-    $gfx.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
-    $bmp.Save((Join-Path $PWD $name), [System.Drawing.Imaging.ImageFormat]::Png)
-    $gfx.Dispose(); $bmp.Dispose()
+function Save-Shot($proc, $name) {
+    [ListsTest]::Shot($proc.MainWindowHandle, (Join-Path $PWD $name))
     Write-Host "снимок: $name"
 }
 
@@ -73,12 +95,11 @@ $cx = [int](($rect.Left + $rect.Right) / 2)
 $cy = [int](($rect.Top + $rect.Bottom) / 2)
 $midY = $cy
 
-# Щелчок отдаёт фокус клавиатуры, пробел ставит паузу.
+# Щелчок отдаёт фокус клавиатуры: иначе клавиши уходят системным
+# всплывающим окнам, а не плееру.
 Move-To $cx $cy
 [ListsTest]::Click()
 Start-Sleep -Milliseconds 400
-[ListsTest]::Key(0x20)
-Start-Sleep -Seconds 1
 
 Write-Host "ставлю закладку клавишей T"
 [ListsTest]::Key(0x54)
@@ -90,7 +111,7 @@ for ($x = ($rect.Right - 300); $x -lt ($rect.Right - 15); $x += 15) {
     Start-Sleep -Milliseconds 60
 }
 Start-Sleep -Seconds 3
-Save-Shot $rect "shot_lists_panel.png"
+Save-Shot $proc "shot_lists_panel.png"
 
 Write-Host "открываю подменю списков в контекстном меню"
 Move-To $cx $cy
@@ -98,7 +119,7 @@ Move-To $cx $cy
 Start-Sleep -Seconds 2
 Move-To ($cx + 95) ($cy + 76)
 Start-Sleep -Seconds 2
-Save-Shot $rect "shot_lists_menu.png"
+Save-Shot $proc "shot_lists_menu.png"
 
 Write-Host "выбираю «Новый список…»"
 [ListsTest]::SetCursorPos(($cx + 230), ($cy + 90)); Start-Sleep -Milliseconds 200
@@ -112,7 +133,7 @@ foreach ($vk in @(0x44, 0x49, 0x41, 0x4C, 0x4F, 0x47)) {
     [ListsTest]::Key([byte]$vk); Start-Sleep -Milliseconds 90
 }
 Start-Sleep -Seconds 1
-Save-Shot $rect "shot_lists_dialog.png"
+Save-Shot $proc "shot_lists_dialog.png"
 
 Write-Host "сохраняю по Enter"
 [ListsTest]::Key(0x0D)
@@ -123,7 +144,7 @@ for ($x = ($rect.Right - 300); $x -lt ($rect.Right - 15); $x += 15) {
     Start-Sleep -Milliseconds 60
 }
 Start-Sleep -Seconds 3
-Save-Shot $rect "shot_lists_created.png"
+Save-Shot $proc "shot_lists_created.png"
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 

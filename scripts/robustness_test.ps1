@@ -19,26 +19,37 @@ Add-Type -AssemblyName System.Drawing
 
 $source = @"
 using System;
+using System.Drawing;
 using System.Runtime.InteropServices;
 public class Rob {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+
+    // Снимаем само окно, а не экран: копия экрана отстаёт от окна
+    // на секунду-другую. PW_RENDERFULLCONTENT = 2 обязателен для окон
+    // с аппаратной отрисовкой.
+    public static void Shot(IntPtr h, string path) {
+        RECT r;
+        if (!GetWindowRect(h, out r)) { return; }
+        using (var bmp = new Bitmap(r.Right - r.Left, r.Bottom - r.Top))
+        using (var gfx = Graphics.FromImage(bmp)) {
+            IntPtr hdc = gfx.GetHdc();
+            PrintWindow(h, hdc, 2);
+            gfx.ReleaseHdc(hdc);
+            bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        }
+    }
 }
 "@
-if (-not ("Rob" -as [type])) { Add-Type -TypeDefinition $source }
+if (-not ("Rob" -as [type])) {
+    Add-Type -TypeDefinition $source -ReferencedAssemblies System.Drawing
+}
 
 function Save-Shot($proc, $name) {
-    $rect = New-Object Rob+RECT
-    if (-not [Rob]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)) { return }
-
-    $bmp = New-Object System.Drawing.Bitmap ($rect.Right - $rect.Left), ($rect.Bottom - $rect.Top)
-    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-    $gfx.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
-    $bmp.Save((Join-Path $PWD $name), [System.Drawing.Imaging.ImageFormat]::Png)
-    $gfx.Dispose(); $bmp.Dispose()
+    [Rob]::Shot($proc.MainWindowHandle, (Join-Path $PWD $name))
     Write-Host "  снимок: $name"
 }
 
