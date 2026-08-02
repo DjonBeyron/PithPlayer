@@ -53,11 +53,13 @@ fn show_layer(app: &mut PithApp, ctx: &egui::Context, layer: Layer, line: &str) 
         screen.min.y + screen.height() * layout.y,
     );
 
+    // Область не двигаем средствами egui: положение задаётся настройками
+    // и переписывалось бы на каждом кадре. Перетаскивание ведём сами.
     let response = egui::Area::new(egui::Id::new(layer.id()))
         .order(egui::Order::Middle)
-        .current_pos(anchor)
+        .fixed_pos(anchor)
         .pivot(egui::Align2::CENTER_CENTER)
-        .movable(true)
+        .movable(false)
         .show(ctx, |ui| {
             ui.set_max_width(screen.width() * MAX_WIDTH_FRACTION);
 
@@ -66,17 +68,28 @@ fn show_layer(app: &mut PithApp, ctx: &egui::Context, layer: Layer, line: &str) 
                 .inner_margin(PADDING)
                 .corner_radius(4.0)
                 .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(line)
-                            .size(layout.font_size)
-                            .color(theme::SUBTITLE_TEXT)
-                            .strong(),
-                    );
-                });
-        })
-        .response;
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(line)
+                                .size(layout.font_size)
+                                .color(theme::SUBTITLE_TEXT)
+                                .strong(),
+                        )
+                        // Иначе при попытке потащить субтитры выделяется текст.
+                        .selectable(false)
+                        .sense(egui::Sense::click_and_drag()),
+                    )
+                })
+                .inner
+        });
 
-    handle_interaction(app, ctx, layer, line, &response, screen);
+    let label = response.inner;
+
+    if label.hovered() || label.dragged() {
+        ctx.set_cursor_icon(egui::CursorIcon::Grab);
+    }
+
+    handle_interaction(app, ctx, layer, line, &label, screen);
 }
 
 /// Перетаскивание, изменение размера колесом и копирование по щелчку.
@@ -89,11 +102,14 @@ fn handle_interaction(
     screen: egui::Rect,
 ) {
     if response.dragged() {
-        let center = response.rect.center();
-        app.set_subtitle_layout_position(
+        // Двигаем на смещение мыши, а не пересчитываем из центра области:
+        // размер подложки меняется вместе с длиной реплики, и центр
+        // прыгал бы на каждой новой строке.
+        let delta = response.drag_delta();
+        app.move_subtitle_layout(
             layer,
-            (center.x - screen.min.x) / screen.width().max(1.0),
-            (center.y - screen.min.y) / screen.height().max(1.0),
+            delta.x / screen.width().max(1.0),
+            delta.y / screen.height().max(1.0),
         );
     }
 

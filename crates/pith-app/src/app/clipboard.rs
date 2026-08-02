@@ -27,15 +27,15 @@ impl PithApp {
         }
     }
 
-    /// Запоминает новое положение слоя субтитров.
-    pub fn set_subtitle_layout_position(&mut self, layer: Layer, x: f32, y: f32) {
+    /// Сдвигает слой субтитров на долю окна.
+    pub fn move_subtitle_layout(&mut self, layer: Layer, dx: f32, dy: f32) {
         let layout = match layer {
             Layer::Main => &mut self.settings.main_subtitle,
             Layer::Secondary => &mut self.settings.secondary_subtitle,
         };
 
-        layout.x = x;
-        layout.y = y;
+        layout.x += dx;
+        layout.y += dy;
         *layout = layout.clamped();
     }
 
