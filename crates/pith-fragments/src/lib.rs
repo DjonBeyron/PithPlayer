@@ -11,5 +11,5 @@ mod runner;
 
 pub use command::{FragmentJob, format_time};
 pub use container::choose_container;
-pub use keyframe::align_to_keyframe;
+pub use keyframe::{align_to_keyframe, align_to_keyframes};
 pub use runner::{ExtractionOutcome, is_ffmpeg_available, run_job, sanitize, unique_output_path};

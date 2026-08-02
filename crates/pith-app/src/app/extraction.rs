@@ -1,7 +1,8 @@
 //! Запуск нарезки отрезков и слежение за ходом работы.
 
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 
 use pith_fragments::{ExtractionOutcome, FragmentJob};
 use pith_store::BookmarkList;
@@ -84,17 +85,28 @@ impl PithApp {
         let (sender, receiver) = channel();
         self.extraction.events = Some(receiver);
 
-        tracing::info!(отрезков = total, "начинаю нарезку");
+        let workers = self.worker_count(total);
+        tracing::info!(отрезков = total, потоков = workers, "начинаю нарезку");
 
-        std::thread::spawn(move || {
-            for job in jobs {
-                let outcome = pith_fragments::run_job(&job);
-                if sender.send(outcome).is_err() {
-                    // Приложение закрылось — продолжать незачем.
-                    break;
-                }
-            }
-        });
+        run_queue(jobs, workers, sender);
+    }
+
+    /// Сколько отрезков резать одновременно.
+    ///
+    /// При перепаковке узкое место — диск. На SSD три процесса дают
+    /// ускорение в два-три раза, на HDD параллельность вредит из-за
+    /// перемещений головки (PLAN.md §6.4). Тип носителя не определяем:
+    /// значение берётся из настроек, ноль означает «как обычно».
+    fn worker_count(&self, total: usize) -> usize {
+        let configured = self.settings.fragments.parallel_jobs;
+
+        let workers = if configured == 0 {
+            DEFAULT_WORKERS
+        } else {
+            configured
+        };
+
+        workers.clamp(1, total.max(1))
     }
 
     /// Активный список и папка, куда лягут его отрезки.
@@ -155,17 +167,27 @@ impl PithApp {
                 return None;
             }
 
-            for bookmark in &plan.list.bookmarks {
-                let requested = (bookmark.seconds() - f64::from(plan.list.buffer_sec)).max(0.0);
+            let requested: Vec<f64> = plan
+                .list
+                .bookmarks
+                .iter()
+                .map(|b| (b.seconds() - f64::from(plan.list.buffer_sec)).max(0.0))
+                .collect();
 
-                // Перепаковка режет по опорным кадрам: встаём точно на них,
-                // иначе отрезок начинается с чёрного экрана.
-                let start = if reencode {
-                    requested
-                } else {
-                    pith_fragments::align_to_keyframe(&source, requested).unwrap_or(requested)
-                };
+            // Перепаковка режет по опорным кадрам: встаём точно на них,
+            // иначе отрезок начинается с чёрного экрана. Весь список
+            // выравнивается одним вызовом ffprobe (PLAN.md §6.4).
+            let starts: Vec<f64> = if reencode {
+                requested.clone()
+            } else {
+                pith_fragments::align_to_keyframes(&source, &requested)
+                    .into_iter()
+                    .zip(&requested)
+                    .map(|(aligned, requested)| aligned.unwrap_or(*requested))
+                    .collect()
+            };
 
+            for (bookmark, start) in plan.list.bookmarks.iter().zip(starts) {
                 jobs.push(FragmentJob {
                     source: source.clone(),
                     output: pith_fragments::unique_output_path(
@@ -249,6 +271,32 @@ impl PithApp {
             self.extraction.events = None;
             self.show_notice(&summary);
         }
+    }
+}
+
+/// Сколько процессов FFmpeg держать одновременно, если в настройках ноль.
+const DEFAULT_WORKERS: usize = 3;
+
+/// Раздаёт очередь задач нескольким потокам.
+///
+/// Очередь общая: кто освободился, тот берёт следующую. Так медленный
+/// отрезок не задерживает остальные, в отличие от деления пополам.
+fn run_queue(jobs: Vec<FragmentJob>, workers: usize, sender: Sender<ExtractionOutcome>) {
+    let queue = Arc::new(Mutex::new(jobs.into_iter()));
+
+    for _ in 0..workers {
+        let queue = Arc::clone(&queue);
+        let sender = sender.clone();
+
+        std::thread::spawn(move || {
+            // Замок держим только на время выдачи задачи, а не на нарезку.
+            while let Some(job) = queue.lock().ok().and_then(|mut q| q.next()) {
+                if sender.send(pith_fragments::run_job(&job)).is_err() {
+                    // Приложение закрылось — продолжать незачем.
+                    break;
+                }
+            }
+        });
     }
 }
 
