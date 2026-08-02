@@ -31,7 +31,15 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
-    if ui.button("Отрезки…").clicked() {
+    // Панель и так выезжает при наведении на правый край; через меню её
+    // можно закрепить, чтобы не пряталась.
+    let pin_label = if app.bookmarks_panel_pinned() {
+        "Открепить отрезки"
+    } else {
+        "Закрепить отрезки"
+    };
+
+    if ui.button(pin_label).clicked() {
         app.toggle_bookmarks_panel();
         ui.close();
     }

@@ -100,11 +100,21 @@ pub fn sanitize(name: &str) -> String {
 }
 
 /// Доступен ли FFmpeg.
+///
+/// Результат запоминается: проверка запускает внешний процесс, а спрашивают
+/// о ней при каждой отрисовке панели. Без кэша интерфейс встаёт колом.
 pub fn is_ffmpeg_available() -> bool {
-    Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_ok_and(|out| out.status.success())
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    *AVAILABLE.get_or_init(|| {
+        let found = Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .is_ok_and(|out| out.status.success());
+
+        tracing::info!(found, "проверка наличия FFmpeg");
+        found
+    })
 }
 
 #[cfg(test)]

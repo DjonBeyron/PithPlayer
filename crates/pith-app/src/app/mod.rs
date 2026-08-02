@@ -79,8 +79,10 @@ pub struct PithApp {
     search: search::SearchState,
     /// Закладки и списки отрезков.
     bookmarks: pith_store::Bookmarks,
-    /// Открыта ли панель отрезков.
+    /// Панель отрезков показана наведением на правый край.
     bookmarks_panel: bool,
+    /// Панель закреплена через меню и не прячется сама.
+    bookmarks_panel_pinned: bool,
     /// Ход нарезки.
     extraction: extraction::ExtractionState,
 }
@@ -145,6 +147,7 @@ impl PithApp {
             search: search::SearchState::default(),
             bookmarks,
             bookmarks_panel: false,
+            bookmarks_panel_pinned: false,
             extraction: extraction::ExtractionState::default(),
         };
 
@@ -376,6 +379,7 @@ impl eframe::App for PithApp {
         self.track_manual_resize(ui.ctx());
         self.fit_window_to_video(ui.ctx());
         self.track_pointer_activity(ui.ctx());
+        self.update_bookmarks_panel_hover(ui.ctx());
 
         if let Some(message) = self.fatal_error.clone() {
             ui::show_fatal_error(ui, &message);

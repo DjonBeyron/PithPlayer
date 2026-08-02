@@ -83,11 +83,17 @@ pub fn read_external(path: &Path) -> Result<Vec<Cue>, ExtractError> {
 ///
 /// Проверяется до показа поиска: без FFmpeg он не работает, и лучше
 /// сказать об этом прямо, чем показывать пустой список.
+///
+/// Результат запоминается — проверка запускает внешний процесс.
 pub fn is_ffmpeg_available() -> bool {
-    Command::new(FFMPEG)
-        .arg("-version")
-        .output()
-        .is_ok_and(|out| out.status.success())
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    *AVAILABLE.get_or_init(|| {
+        Command::new(FFMPEG)
+            .arg("-version")
+            .output()
+            .is_ok_and(|out| out.status.success())
+    })
 }
 
 #[cfg(test)]

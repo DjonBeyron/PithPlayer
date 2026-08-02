@@ -9,28 +9,60 @@ use crate::ui::format_time;
 /// Ширина панели.
 const PANEL_WIDTH: f32 = 320.0;
 
+/// Отступ сверху: под панелью замеров.
+const PANEL_TOP: f32 = 240.0;
+
+/// Отступ от правого края окна.
+const PANEL_MARGIN: f32 = 36.0;
+
 pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     if !app.bookmarks_panel_open() {
         return;
     }
 
-    let mut open = true;
     let mut jump_to = None;
     let mut remove = None;
     let mut start_extraction = false;
 
-    egui::Window::new("Отрезки")
-        .open(&mut open)
-        .default_width(PANEL_WIDTH)
-        .anchor(egui::Align2::RIGHT_TOP, [-12.0, 60.0])
+    // Своя область, а не `Window`: панель выезжает и прячется сама,
+    // ей не нужны ни заголовок, ни перетаскивание.
+    // Положение считаем сами: область с якорем не знает своей ширины
+    // на первом кадре и уезжает за край окна.
+    let screen = ctx.input(|i| i.viewport_rect());
+    let position = egui::pos2(
+        screen.max.x - PANEL_WIDTH - PANEL_MARGIN,
+        screen.min.y + PANEL_TOP,
+    );
+
+    egui::Area::new(egui::Id::new("bookmarks_panel"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(position)
         .show(ctx, |ui| {
-            show_summary(app, ui);
-            ui.separator();
+            ui.set_width(PANEL_WIDTH);
 
-            show_list(app, ui, &mut jump_to, &mut remove);
+            egui::Frame::NONE
+                .fill(theme::WINDOW_BG.gamma_multiply(0.96))
+                .inner_margin(12.0)
+                .corner_radius(6.0)
+                .show(ui, |ui| {
+                    ui.set_width(PANEL_WIDTH);
 
-            ui.separator();
-            start_extraction = show_actions(app, ui);
+                    ui.label(
+                        egui::RichText::new("Отрезки")
+                            .color(theme::TEXT_PRIMARY)
+                            .strong()
+                            .size(16.0),
+                    );
+                    ui.separator();
+
+                    show_summary(app, ui);
+                    ui.separator();
+
+                    show_list(app, ui, &mut jump_to, &mut remove);
+
+                    ui.separator();
+                    start_extraction = show_actions(app, ui);
+                });
         });
 
     if let Some(time) = jump_to {
@@ -41,9 +73,6 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     }
     if start_extraction {
         app.start_extraction();
-    }
-    if !open {
-        app.close_bookmarks_panel();
     }
 }
 

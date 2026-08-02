@@ -194,19 +194,63 @@ impl PithApp {
         }
     }
 
-    /// Панель закладок.
+    /// Видна ли панель отрезков.
     pub fn bookmarks_panel_open(&self) -> bool {
-        self.bookmarks_panel
+        self.bookmarks_panel || self.bookmarks_panel_pinned
     }
 
+    pub fn bookmarks_panel_pinned(&self) -> bool {
+        self.bookmarks_panel_pinned
+    }
+
+    /// Закрепляет панель, чтобы она не пряталась при уходе курсора.
     pub fn toggle_bookmarks_panel(&mut self) {
-        self.bookmarks_panel = !self.bookmarks_panel;
-    }
-
-    pub fn close_bookmarks_panel(&mut self) {
+        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
         self.bookmarks_panel = false;
     }
+
+    /// Показывает панель при наведении на правый край окна.
+    ///
+    /// Так она вызывалась в v4: подвести курсор к правой стороне —
+    /// панель выезжает, увести — прячется.
+    pub(super) fn update_bookmarks_panel_hover(&mut self, ctx: &egui::Context) {
+        if self.bookmarks_panel_pinned {
+            return;
+        }
+
+        let screen = ctx.input(|i| i.viewport_rect());
+        let Some(pointer) = ctx.input(|i| i.pointer.hover_pos()) else {
+            // Курсор вне окна — прятать не спешим: он мог уйти на панель
+            // соседнего монитора.
+            return;
+        };
+
+        let was_open = self.bookmarks_panel;
+
+        if pointer.x >= screen.max.x - HOVER_ZONE_WIDTH {
+            self.bookmarks_panel = true;
+        } else if self.bookmarks_panel && pointer.x < screen.max.x - PANEL_KEEP_WIDTH {
+            // Пока курсор над самой панелью, она остаётся на месте.
+            self.bookmarks_panel = false;
+        }
+
+        if was_open != self.bookmarks_panel {
+            tracing::debug!(
+                открыта = self.bookmarks_panel,
+                курсор_x = pointer.x,
+                "панель отрезков"
+            );
+        }
+    }
 }
+
+/// Ширина полосы у правого края, вызывающей панель.
+const HOVER_ZONE_WIDTH: f32 = 40.0;
+
+/// До какой границы слева панель считается «под курсором».
+///
+/// Чуть шире самой панели: иначе она мигала бы на её краю.
+const PANEL_KEEP_WIDTH: f32 = 380.0;
 
 fn summarize(progress: ExtractionProgress) -> String {
     if progress.failed == 0 {
