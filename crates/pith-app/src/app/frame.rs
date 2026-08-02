@@ -30,6 +30,7 @@ impl eframe::App for PithApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let probe = crate::slow::FrameProbe::start();
         self.frame_time = ui.ctx().input(|i| i.time);
 
         // Пользователь закрывает окно — освобождаем движок прямо здесь,
@@ -59,6 +60,8 @@ impl eframe::App for PithApp {
         let frame_painted = self.paint_video(ui);
         self.paint_overlays(ui.ctx());
         self.record_frame(ui.ctx(), frame_painted);
+
+        probe.finish(&self.frame_hint());
     }
 }
 
@@ -102,7 +105,9 @@ impl PithApp {
     fn paint_overlays(&mut self, ctx: &egui::Context) {
         ui::show_subtitles(self, ctx);
         ui::show_controls(self, ctx);
-        ui::show_bookmarks_panel(self, ctx);
+        crate::slow::probe("отрисовка панели отрезков", || {
+            ui::show_bookmarks_panel(self, ctx)
+        });
         ui::show_list_dialog(self, ctx);
         ui::show_fragment_settings(self, ctx);
         ui::show_file_types_prompt(self, ctx);
@@ -110,6 +115,30 @@ impl PithApp {
         ui::show_notice(self, ctx);
         ui::show_migration_report(self, ctx);
         ui::show_resume_offer(self, ctx);
+    }
+
+    /// Что было на экране в этом кадре — подсказка для разбора заминок.
+    fn frame_hint(&self) -> String {
+        let mut parts = Vec::new();
+
+        if self.bookmarks_panel_open() {
+            parts.push("панель отрезков");
+        }
+        if self.list_dialog.is_some() {
+            parts.push("диалог списка");
+        }
+        if self.fragment_settings.is_some() {
+            parts.push("настройки нарезки");
+        }
+        if self.extraction_progress().is_some() {
+            parts.push("идёт нарезка");
+        }
+
+        if parts.is_empty() {
+            "только видео".to_string()
+        } else {
+            parts.join(", ")
+        }
     }
 
     /// Учёт кадра в замерах и запрос следующей отрисовки.

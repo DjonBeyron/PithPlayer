@@ -45,8 +45,15 @@ impl PithApp {
     }
 
     /// Можно ли резать: нужен FFmpeg и хотя бы одна закладка.
+    ///
+    /// Первый вызов запускает `ffmpeg -version` и потому небесплатен;
+    /// дальше ответ берётся из кэша. Замер покажет, если проверка успела
+    /// попасть в кадр интерфейса.
     pub fn can_extract(&self) -> bool {
-        pith_fragments::is_ffmpeg_available()
+        crate::slow::probe(
+            "проверка наличия FFmpeg",
+            pith_fragments::is_ffmpeg_available,
+        )
     }
 
     /// Запускает нарезку всех закладок активного списка.

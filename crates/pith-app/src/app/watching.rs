@@ -117,9 +117,15 @@ impl PithApp {
         let duration = state.duration;
         self.last_position_save = position;
 
-        let saved = self
-            .watch_positions
-            .remember(Path::new(&path), position, duration);
+        // Считает хэш файла и пишет json — самая тяжёлая операция кадра
+        // из тех, что делаются по ходу воспроизведения.
+        let saved = crate::slow::probe(
+            "сохранение позиции просмотра",
+            || {
+                self.watch_positions
+                    .remember(Path::new(&path), position, duration)
+            },
+        );
         tracing::debug!(position, duration, saved, "сохранение позиции просмотра");
     }
 }

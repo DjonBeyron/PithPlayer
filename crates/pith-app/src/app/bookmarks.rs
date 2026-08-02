@@ -72,7 +72,9 @@ impl PithApp {
         };
 
         if list.add(time_ms, name.clone()) {
-            self.bookmarks.save();
+            crate::slow::probe("сохранение закладок", || {
+                self.bookmarks.save()
+            });
             let label = name.unwrap_or_else(|| "закладка".into());
             self.show_notice(&format!("Добавлено: {label}"));
             tracing::info!(time_ms, "закладка добавлена");

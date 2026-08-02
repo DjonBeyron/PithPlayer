@@ -188,6 +188,10 @@ impl PithApp {
             extraction: extraction::ExtractionState::default(),
         };
 
+        // Проверка наличия FFmpeg запускает внешний процесс. Делаем это
+        // в фоне при старте, чтобы она не досталась кадру интерфейса.
+        pith_fragments::warm_up();
+
         match Self::start_engine(cc, &options) {
             Ok(engine) => app.engine = Some(engine),
             Err(message) => {

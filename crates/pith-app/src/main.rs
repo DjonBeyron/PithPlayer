@@ -9,6 +9,7 @@ mod bench;
 mod cli;
 mod logging;
 mod single_instance;
+mod slow;
 mod theme;
 mod ui;
 mod video;

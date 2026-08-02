@@ -13,9 +13,9 @@ impl PithApp {
     /// Спрашивается при отрисовке меню, поэтому ответ запоминается:
     /// лезть в реестр каждый кадр незачем.
     pub fn file_types_registered(&mut self) -> bool {
-        *self
-            .file_types_registered
-            .get_or_insert_with(associations::is_registered)
+        *self.file_types_registered.get_or_insert_with(|| {
+            crate::slow::probe("чтение ассоциаций из реестра", associations::is_registered)
+        })
     }
 
     /// Ждёт ли подтверждения смена ассоциаций.

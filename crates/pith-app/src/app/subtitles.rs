@@ -54,7 +54,11 @@ impl PithApp {
             return;
         };
 
-        self.tracks = engine.tracks();
+        // Список дорожек читается из mpv по частям: у файла с десятком
+        // дорожек это десятки обращений к свойствам.
+        self.tracks = crate::slow::probe("чтение списка дорожек", || {
+            engine.tracks()
+        });
         self.refresh_selected_tracks();
     }
 
@@ -168,10 +172,13 @@ impl PithApp {
             return;
         };
 
-        let fresh = SubtitleText {
-            main: engine.subtitle_text(),
-            secondary: engine.secondary_subtitle_text(),
-        };
+        // Делается каждый кадр: два обращения к свойствам mpv.
+        let fresh = crate::slow::probe("чтение реплик субтитров", || {
+            SubtitleText {
+                main: engine.subtitle_text(),
+                secondary: engine.secondary_subtitle_text(),
+            }
+        });
 
         // Смена реплики — редкое событие, логировать его дёшево и полезно:
         // сразу видно, доходят ли субтитры от mpv.
