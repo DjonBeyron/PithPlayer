@@ -373,7 +373,7 @@ impl eframe::App for PithApp {
         let render_context = self.engine.as_ref().and_then(|e| e.shared_render_context());
         let mut frame_painted = false;
 
-        egui::CentralPanel::default()
+        let video_area = egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(egui::Color32::BLACK))
             .show(ui, |ui| {
                 let rect = ui.available_rect_before_wrap();
@@ -383,11 +383,22 @@ impl eframe::App for PithApp {
                 {
                     frame_painted = true;
                 }
-            });
+
+                // Область для правого щелчка: сюда вешается контекстное меню.
+                ui.interact(
+                    rect,
+                    egui::Id::new("video_area"),
+                    egui::Sense::click_and_drag(),
+                )
+            })
+            .inner;
+
+        // Меню показывается штатным механизмом egui: только внутри него
+        // подменю раскрываются по наведению и размещаются сбоку.
+        video_area.context_menu(|ui| ui::show_menu_items(self, ui));
 
         ui::show_subtitles(self, ui.ctx());
         ui::show_controls(self, ui.ctx());
-        ui::show_context_menu(self, ui.ctx());
         ui::show_notice(self, ui.ctx());
         ui::show_migration_report(self, ui.ctx());
         ui::show_resume_offer(self, ui.ctx());

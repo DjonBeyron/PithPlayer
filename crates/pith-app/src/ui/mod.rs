@@ -15,7 +15,7 @@ mod timeline;
 
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
-pub use menu::show as show_context_menu;
+pub use menu::show_items as show_menu_items;
 pub use migration::show as show_migration_report;
 pub use notice::show as show_notice;
 pub use resume::show as show_resume_offer;

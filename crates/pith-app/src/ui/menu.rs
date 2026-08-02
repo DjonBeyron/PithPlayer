@@ -5,65 +5,32 @@
 use pith_mpv::TrackKind;
 
 use crate::app::PithApp;
-use crate::theme;
 
 /// Готовые значения скорости.
 const SPEED_PRESETS: [f64; 6] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-/// Показывает меню, если по видео щёлкнули правой кнопкой.
-pub fn show(app: &mut PithApp, ctx: &egui::Context) {
-    let id = egui::Id::new("context_menu");
+/// Минимальная ширина меню.
+const MENU_WIDTH: f32 = 220.0;
 
-    if ctx.input(|i| i.pointer.secondary_clicked())
-        && let Some(pos) = ctx.input(|i| i.pointer.interact_pos())
-    {
-        ctx.memory_mut(|m| m.data.insert_temp(id, pos));
-    }
-
-    let Some(position) = ctx.memory(|m| m.data.get_temp::<egui::Pos2>(id)) else {
-        return;
-    };
-
-    let mut close = false;
-
-    let area = egui::Area::new(id.with("area"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(position)
-        .show(ctx, |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(theme::WINDOW_BG)
-                .show(ui, |ui| {
-                    ui.set_min_width(230.0);
-                    close = show_items(app, ui);
-                });
-        });
-
-    // Щелчок мимо меню закрывает его.
-    let clicked_outside = ctx.input(|i| i.pointer.any_click())
-        && !area.response.rect.contains(
-            ctx.input(|i| i.pointer.interact_pos())
-                .unwrap_or(egui::Pos2::ZERO),
-        );
-
-    if close || clicked_outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        ctx.memory_mut(|m| m.data.remove::<egui::Pos2>(id));
-    }
-}
-
-/// Пункты меню. Возвращает `true`, если меню пора закрыть.
-fn show_items(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
-    let mut close = false;
+/// Пункты меню.
+///
+/// Вызывается из `Response::context_menu`, а не рисуется своей областью:
+/// только внутри меню-контекста `ui.menu_button` превращается
+/// в раскрывающийся по наведению `SubMenuButton`, который egui сам
+/// размещает сбоку и переворачивает у края экрана.
+pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
+    ui.set_min_width(MENU_WIDTH);
 
     if ui.button("Открыть файл…").clicked() {
         app.open_file_dialog();
-        close = true;
+        ui.close();
     }
 
     ui.separator();
 
-    close |= show_audio_tracks(app, ui);
-    close |= show_subtitle_tracks(app, ui);
-    close |= show_speed(app, ui);
+    show_audio_tracks(app, ui);
+    show_subtitle_tracks(app, ui);
+    show_speed(app, ui);
 
     ui.separator();
 
@@ -76,18 +43,16 @@ fn show_items(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
 
     if ui.button(label).clicked() {
         app.toggle_subtitles();
-        close = true;
+        ui.close();
     }
 
     if ui.button("Полный экран").clicked() {
         app.toggle_fullscreen(ui.ctx());
-        close = true;
+        ui.close();
     }
-
-    close
 }
 
-fn show_audio_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
+fn show_audio_tracks(app: &mut PithApp, ui: &mut egui::Ui) {
     let tracks: Vec<_> = app
         .tracks()
         .iter()
@@ -96,7 +61,7 @@ fn show_audio_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
         .collect();
 
     if tracks.is_empty() {
-        return false;
+        return;
     }
 
     let current = app.selected_tracks().audio;
@@ -113,13 +78,10 @@ fn show_audio_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
 
     if let Some(id) = chosen {
         app.choose_audio_track(id);
-        return true;
     }
-
-    false
 }
 
-fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
+fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) {
     let tracks: Vec<_> = app
         .tracks()
         .iter()
@@ -128,7 +90,7 @@ fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
         .collect();
 
     if tracks.is_empty() {
-        return false;
+        return;
     }
 
     let selected = app.selected_tracks();
@@ -172,17 +134,13 @@ fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
 
     if let Some(id) = main_choice {
         app.choose_subtitle_track(id);
-        return true;
     }
     if let Some(id) = secondary_choice {
         app.choose_secondary_subtitle_track(id);
-        return true;
     }
-
-    false
 }
 
-fn show_speed(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
+fn show_speed(app: &mut PithApp, ui: &mut egui::Ui) {
     let current = app.engine().map(|e| e.state().speed).unwrap_or(1.0);
     let mut chosen = None;
 
@@ -198,8 +156,5 @@ fn show_speed(app: &mut PithApp, ui: &mut egui::Ui) -> bool {
 
     if let Some(speed) = chosen {
         app.set_speed(speed);
-        return true;
     }
-
-    false
 }

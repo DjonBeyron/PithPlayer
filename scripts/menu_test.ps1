@@ -53,7 +53,15 @@ Start-Sleep -Milliseconds 300
 [MenuShot]::mouse_event([MenuShot]::RIGHTDOWN, 0, 0, 0, 0)
 Start-Sleep -Milliseconds 60
 [MenuShot]::mouse_event([MenuShot]::RIGHTUP, 0, 0, 0, 0)
-Start-Sleep -Seconds 1
+Start-Sleep -Milliseconds 700
+
+# Наводим курсор на пункт с подменю: оно обязано раскрыться само,
+# без щелчка, и лечь сбоку от меню.
+$itemX = $x + 60
+$itemY = $y + 52
+Write-Host "навожу на «Аудиодорожка» ($itemX, $itemY)"
+[MenuShot]::SetCursorPos($itemX, $itemY)
+Start-Sleep -Milliseconds 1200
 
 $bmp = New-Object System.Drawing.Bitmap $width, $height
 $gfx = [System.Drawing.Graphics]::FromImage($bmp)
