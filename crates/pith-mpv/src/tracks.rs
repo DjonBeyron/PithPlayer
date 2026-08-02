@@ -110,6 +110,7 @@ impl Engine {
     /// Включает дорожку субтитров. `None` — выключить субтитры.
     pub fn set_subtitle_track(&mut self, id: Option<i64>) {
         self.set_track("sid", id);
+        self.hide_own_subtitles();
     }
 
     /// Включает вторую дорожку субтитров.
@@ -118,6 +119,21 @@ impl Engine {
     /// отдельная система из полутора тысяч строк.
     pub fn set_secondary_subtitle_track(&mut self, id: Option<i64>) {
         self.set_track("secondary-sid", id);
+        self.hide_own_subtitles();
+    }
+
+    /// Гасит собственную отрисовку субтитров mpv.
+    ///
+    /// Повторяется при каждой смене дорожки, а не только при запуске:
+    /// иначе выбранная вручную дорожка рисуется ещё и средствами mpv —
+    /// поверх наших слоёв появляется текст, который нельзя ни сдвинуть,
+    /// ни скопировать.
+    fn hide_own_subtitles(&mut self) {
+        for property in ["sub-visibility", "secondary-sub-visibility"] {
+            if let Err(e) = self.set_property_string(property, "no") {
+                tracing::warn!(property, error = %e, "не удалось погасить отрисовку субтитров mpv");
+            }
+        }
     }
 
     /// Включает аудиодорожку.

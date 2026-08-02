@@ -24,7 +24,12 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
         Err(e) => return Err(StoreError::read(path, e)),
     };
 
-    match serde_json::from_str(&content) {
+    // Блокнот и PowerShell сохраняют UTF-8 с меткой порядка байтов,
+    // а разбор JSON на ней спотыкается. Пользователь вправе править
+    // настройки вручную — молча терять такой файл нельзя.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+
+    match serde_json::from_str(content) {
         Ok(value) => Ok(Some(value)),
         Err(e) => {
             tracing::error!(?path, error = %e, "файл данных повреждён, откладываю его в сторону");
@@ -131,6 +136,27 @@ mod tests {
         assert!(
             path.with_extension("bad").exists(),
             "повреждённый файл обязан сохраниться рядом"
+        );
+    }
+
+    #[test]
+    fn читает_файл_с_меткой_порядка_байтов() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let path = dir.path().join("данные.json");
+
+        // Так файл выглядит после правки в блокноте.
+        let json = serde_json::to_string(&образец()).expect("сериализация");
+        fs::write(&path, format!("\u{feff}{json}")).expect("запись с меткой");
+
+        let read: Option<Пример> = read_json(&path).expect("чтение");
+        assert_eq!(
+            read,
+            Some(образец()),
+            "файл с меткой порядка байтов обязан читаться"
+        );
+        assert!(
+            !path.with_extension("bad").exists(),
+            "исправный файл не должен откладываться"
         );
     }
 
