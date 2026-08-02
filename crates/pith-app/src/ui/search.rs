@@ -87,27 +87,31 @@ fn show_results(app: &PithApp, ui: &mut egui::Ui, jump_to: &mut Option<f64>) {
     egui::ScrollArea::vertical()
         .max_height(RESULTS_HEIGHT)
         .show(ui, |ui| {
+            let width = ui.available_width();
+
             for hit in &state.hits {
-                let row = ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format_time(hit.start))
+                // Строка целиком — один выбираемый пункт списка: он
+                // подсвечивается под курсором и кликается по всей ширине.
+                // Обычные надписи в egui выделяются мышью, и щелчок по ним
+                // уходил в выделение текста вместо перехода к реплике.
+                ui.style_mut().spacing.interact_size.x = width;
+
+                let row = ui.selectable_label(
+                    false,
+                    (
+                        egui::RichText::new(format!("{}  ", format_time(hit.start)))
                             .color(theme::ACCENT)
                             .monospace(),
-                    );
-                    ui.label(egui::RichText::new(&hit.text).color(theme::TEXT_PRIMARY));
-                });
+                        egui::RichText::new(&hit.text).color(theme::TEXT_PRIMARY),
+                    ),
+                );
 
-                // Щелчок в любом месте строки перематывает к реплике.
                 if row
-                    .response
-                    .interact(egui::Sense::click())
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
                 {
                     *jump_to = Some(hit.start);
                 }
-
-                ui.separator();
             }
         });
 }

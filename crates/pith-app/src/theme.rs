@@ -18,6 +18,8 @@ pub const WINDOW_BG: Color32 = Color32::from_rgb(45, 45, 45);
 pub const INPUT_BG: Color32 = Color32::from_rgb(60, 60, 60);
 /// Кнопки и разделители.
 pub const CONTROL: Color32 = Color32::from_rgb(70, 70, 70);
+/// Подсветка строки под курсором.
+pub const HIGHLIGHT: Color32 = Color32::from_rgb(58, 72, 88);
 /// Тёмные зоны под видео.
 pub const DARK_BG: Color32 = Color32::from_rgb(30, 30, 30);
 
@@ -59,6 +61,12 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.hovered.bg_fill = INPUT_BG;
     visuals.widgets.active.bg_fill = ACCENT;
     visuals.selection.bg_fill = ACCENT.gamma_multiply(0.6);
+
+    // Кнопки берут фон из `weak_bg_fill`, а не из `bg_fill`. Без этого
+    // строки списков и кнопки без рамки никак не откликались на наведение.
+    visuals.widgets.inactive.weak_bg_fill = CONTROL;
+    visuals.widgets.hovered.weak_bg_fill = HIGHLIGHT;
+    visuals.widgets.active.weak_bg_fill = ACCENT.gamma_multiply(0.35);
 
     ctx.set_visuals(visuals);
 }
