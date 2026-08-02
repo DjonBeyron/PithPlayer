@@ -61,6 +61,19 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 find crates -name "*.rs" -exec wc -l {} + | awk '$1 > 400 {print "ПРЕВЫШЕНИЕ:", $2, $1}'
 ```
 
+## Поставка
+
+Портативный ZIP: распаковать и запустить, установка не нужна.
+
+```bash
+powershell -File scripts\package.ps1
+```
+
+Ключи: `-WithFfmpeg` вкладывает `ffmpeg.exe` и `ffprobe.exe` из `PATH`
+(без них плеер работает, недоступна только нарезка), `-Portable` кладёт
+`portable.txt` и переносит данные пользователя в саму папку, `-SkipBuild`
+пропускает пересборку. Результат — в `dist/`.
+
 ## Уровень логирования
 
 ```bash
