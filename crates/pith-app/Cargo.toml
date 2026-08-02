@@ -19,6 +19,8 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rfd = "0.15"
+# Буфер обмена для копирования реплик субтитров.
+arboard = "3"
 
 [dev-dependencies]
 tempfile = "3"

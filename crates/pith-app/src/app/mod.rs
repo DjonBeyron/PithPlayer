@@ -3,20 +3,24 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod clipboard;
 mod import_v4;
 mod playback;
+mod subtitles;
 mod viewport;
 mod watching;
 
 use std::path::PathBuf;
 
 use pith_mpv::{Engine, EngineEvent, EngineOptions, HwDec};
-use pith_store::{DataPaths, WatchPositions};
+use pith_store::{DataPaths, Settings, WatchPositions};
 
 use crate::bench::Metrics;
 use crate::ui;
 use crate::video;
 
+use clipboard::Notice;
+pub use subtitles::SubtitleText;
 pub use watching::ResumeOffer;
 
 pub struct PithApp {
@@ -54,6 +58,16 @@ pub struct PithApp {
     instance: crate::single_instance::InstanceServer,
     /// Итог переноса данных из версии 4 — показывается один раз.
     migration: Option<pith_store::MigrationReport>,
+    /// Настройки плеера.
+    settings: Settings,
+    /// Каталог данных — нужен для сохранения настроек.
+    data_paths: DataPaths,
+    /// Текущие реплики субтитров.
+    subtitle_text: SubtitleText,
+    /// Всплывающее уведомление.
+    notice: Option<Notice>,
+    /// Время текущего кадра — по нему гаснут уведомления.
+    frame_time: f64,
 }
 
 impl PithApp {
@@ -64,13 +78,17 @@ impl PithApp {
         args: crate::cli::Args,
         instance: crate::single_instance::InstanceServer,
     ) -> Self {
+        let data_paths = DataPaths::discover();
+        let settings = Settings::load(&data_paths);
+
         let hwdec = args.hwdec.unwrap_or_default();
         let options = EngineOptions {
             hwdec,
-            ..Default::default()
+            volume: settings.volume,
+            audio_languages: settings.audio_languages.clone(),
+            subtitle_languages: settings.subtitle_priority.main_tags.clone(),
         };
 
-        let data_paths = DataPaths::discover();
         let mut watch_positions = WatchPositions::load(data_paths.clone());
 
         // Первый запуск: переносим данные версии 4.
@@ -99,6 +117,11 @@ impl PithApp {
             last_position_save: 0.0,
             instance,
             migration,
+            settings,
+            data_paths,
+            subtitle_text: SubtitleText::default(),
+            notice: None,
+            frame_time: 0.0,
         };
 
         match Self::start_engine(cc, &options) {
@@ -269,8 +292,10 @@ impl PithApp {
             self.fit_window_pending = true;
             self.window_resized_by_user = false;
             self.prepare_resume_offer();
+            self.select_tracks_by_tags();
         }
 
+        self.refresh_subtitle_text();
         self.store_position_periodically();
 
         // Перемотка считается завершённой, когда mpv отдал новую позицию.
@@ -311,6 +336,8 @@ impl eframe::App for PithApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame_time = ui.ctx().input(|i| i.time);
+
         // Пользователь закрывает окно — освобождаем движок прямо здесь,
         // пока контекст OpenGL и окно ещё живы.
         //
@@ -351,7 +378,9 @@ impl eframe::App for PithApp {
                 }
             });
 
+        ui::show_subtitles(self, ui.ctx());
         ui::show_controls(self, ui.ctx());
+        ui::show_notice(self, ui.ctx());
         ui::show_migration_report(self, ui.ctx());
         ui::show_resume_offer(self, ui.ctx());
 

@@ -5,7 +5,9 @@ param(
     [Parameter(Mandatory = $true)][string]$File,
     [string]$Out = "screenshot.png",
     [int]$Wait = 10,
-    [string]$Exe = "target\release\pith-player.exe"
+    [string]$Exe = "target\release\pith-player.exe",
+    # Клавиши, отправляемые перед снимком: например "{ENTER}" для диалогов.
+    [string]$Keys = ""
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -49,6 +51,12 @@ if (-not $foreground) {
 }
 
 Start-Sleep -Milliseconds 800
+
+if ($Keys) {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.SendKeys]::SendWait($Keys)
+    Start-Sleep -Milliseconds 600
+}
 
 $rect = New-Object WinShot+RECT
 [WinShot]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null

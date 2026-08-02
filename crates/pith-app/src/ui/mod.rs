@@ -7,13 +7,17 @@ mod controls;
 mod hotkeys;
 mod metrics;
 mod migration;
+mod notice;
 mod resume;
+pub mod subtitles;
 mod timeline;
 
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
 pub use migration::show as show_migration_report;
+pub use notice::show as show_notice;
 pub use resume::show as show_resume_offer;
+pub use subtitles::show as show_subtitles;
 pub use timeline::FragmentRange;
 
 use crate::theme;

@@ -119,6 +119,13 @@ impl EngineOptions {
             // Подхват внешних субтитров и аудио рядом с видео.
             ("sub-auto", "fuzzy".into()),
             ("audio-file-auto", "fuzzy".into()),
+            // Субтитры рисует приложение, а не mpv.
+            //
+            // Свойства `sub-text` и `secondary-sub-text` продолжают работать
+            // при выключенной отрисовке. Без этого реплика видна дважды:
+            // поверх кадра от mpv ложится наш слой, который можно двигать
+            // и копировать (PLAN.md §6.2).
+            ("sub-visibility", "no".into()),
             // ===== Звук =====
             ("volume", self.volume.to_string()),
             ("volume-max", "150".into()),

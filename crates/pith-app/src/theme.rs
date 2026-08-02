@@ -36,6 +36,11 @@ pub const TIMELINE_TRACK: Color32 = Color32::from_rgb(90, 90, 90);
 pub const FRAGMENT: Color32 = Color32::from_rgb(255, 205, 60);
 /// Метка закладки на полосе.
 pub const BOOKMARK: Color32 = Color32::from_rgb(255, 235, 130);
+
+/// Текст субтитров.
+pub const SUBTITLE_TEXT: Color32 = Color32::from_rgb(255, 255, 255);
+/// Подложка под субтитрами: полупрозрачная, чтобы текст читался на любом фоне.
+pub const SUBTITLE_BG: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 150);
 /// Успешное завершение.
 pub const SUCCESS: Color32 = Color32::from_rgb(100, 200, 100);
 /// Ошибка.

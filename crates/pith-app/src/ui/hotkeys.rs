@@ -25,6 +25,8 @@ struct Actions {
     toggle_pause: bool,
     toggle_fullscreen: bool,
     reset_speed: bool,
+    copy_subtitle: bool,
+    toggle_subtitles: bool,
 }
 
 pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
@@ -53,6 +55,12 @@ pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
     if actions.reset_speed {
         app.reset_speed();
     }
+    if actions.copy_subtitle {
+        app.copy_current_subtitle();
+    }
+    if actions.toggle_subtitles {
+        app.toggle_subtitles();
+    }
 }
 
 fn collect_actions(i: &egui::InputState) -> Actions {
@@ -80,6 +88,9 @@ fn collect_actions(i: &egui::InputState) -> Actions {
             Key::ArrowDown => actions.volume -= VOLUME_STEP,
             Key::CloseBracket => actions.speed += SPEED_STEP,
             Key::OpenBracket => actions.speed -= SPEED_STEP,
+            // Схема из v4: C копирует реплику субтитров.
+            Key::C => actions.copy_subtitle = true,
+            Key::V => actions.toggle_subtitles = true,
             _ => {}
         }
     }

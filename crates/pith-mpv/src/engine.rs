@@ -287,6 +287,21 @@ impl Engine {
             .map_err(|e| MpvError::property(name, e))
     }
 
+    pub(crate) fn property_i64(&self, name: &str) -> Option<i64> {
+        self.mpv.get_property::<i64>(name).ok()
+    }
+
+    pub(crate) fn property_bool(&self, name: &str) -> Option<bool> {
+        self.mpv.get_property::<bool>(name).ok()
+    }
+
+    /// Записывает строковое свойство.
+    pub(crate) fn set_property_string(&mut self, name: &str, value: &str) -> Result<()> {
+        self.mpv
+            .set_property(name, value)
+            .map_err(|e| MpvError::command(name, e))
+    }
+
     /// Фактически применённый режим аппаратного декодирования.
     ///
     /// Отличается от запрошенного, если mpv не смог включить нужный режим

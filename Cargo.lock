@@ -2033,6 +2033,7 @@ name = "pith-app"
 version = "5.0.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "eframe",
  "egui",
  "glow 0.16.0",
