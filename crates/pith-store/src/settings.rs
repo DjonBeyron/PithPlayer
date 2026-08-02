@@ -103,6 +103,12 @@ pub struct Settings {
     /// Громкость, запоминается между запусками.
     pub volume: i64,
 
+    /// Устройство вывода звука (`audio-device` в mpv).
+    ///
+    /// `None` — выбирает mpv. Имя устройства привязано к системе, поэтому
+    /// на другой машине оно просто не найдётся, и звук пойдёт как обычно.
+    pub audio_device: Option<String>,
+
     /// Настройки нарезки отрезков.
     pub fragments: FragmentSettings,
 }
@@ -117,6 +123,7 @@ impl Default for Settings {
             main_subtitle: SubtitleLayout::main(),
             secondary_subtitle: SubtitleLayout::secondary(),
             volume: 80,
+            audio_device: None,
             fragments: FragmentSettings::default(),
         }
     }

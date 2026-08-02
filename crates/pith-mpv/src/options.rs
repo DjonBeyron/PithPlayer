@@ -61,6 +61,8 @@ pub struct EngineOptions {
     pub audio_languages: Vec<String>,
     /// Языки субтитров по убыванию приоритета (опция `slang`).
     pub subtitle_languages: Vec<String>,
+    /// Устройство вывода звука. `None` — выбирает mpv.
+    pub audio_device: Option<String>,
 }
 
 impl Default for EngineOptions {
@@ -70,6 +72,7 @@ impl Default for EngineOptions {
             volume: 80,
             audio_languages: vec!["eng".into(), "en".into()],
             subtitle_languages: vec!["eng".into(), "en".into()],
+            audio_device: None,
         }
     }
 }
@@ -80,7 +83,7 @@ impl EngineOptions {
     /// Здесь только то, что нельзя менять на лету. Всё остальное
     /// выставляется свойствами уже после запуска.
     pub fn to_mpv_options(&self) -> Vec<(&'static str, String)> {
-        vec![
+        let mut options = vec![
             // ===== Аппаратное ускорение =====
             ("hwdec", self.hwdec.as_mpv_value().to_string()),
             // ===== Свой интерфейс =====
@@ -133,6 +136,14 @@ impl EngineOptions {
             // ===== Звук =====
             ("volume", self.volume.to_string()),
             ("volume-max", "150".into()),
-        ]
+        ];
+
+        // Устройство задаётся до запуска: иначе звук успевает пойти
+        // в системное по умолчанию и на смену отзывается щелчком.
+        if let Some(device) = &self.audio_device {
+            options.push(("audio-device", device.clone()));
+        }
+
+        options
     }
 }

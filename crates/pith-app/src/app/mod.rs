@@ -3,6 +3,7 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod audio;
 mod bookmarks;
 mod clipboard;
 mod extraction;
@@ -24,6 +25,18 @@ use crate::bench::Metrics;
 
 use clipboard::Notice;
 pub use lists::ListDialog;
+
+/// Локальный путь, которого нет на диске.
+///
+/// URL и потоки не проверяем: их существование определяет сам mpv.
+fn is_missing_local_file(path: &str) -> bool {
+    if path.contains("://") {
+        return false;
+    }
+
+    !std::path::Path::new(path).exists()
+}
+
 pub use subtitles::SubtitleText;
 pub use watching::ResumeOffer;
 
@@ -70,6 +83,11 @@ pub struct PithApp {
     subtitle_text: SubtitleText,
     /// Всплывающее уведомление.
     notice: Option<Notice>,
+    /// Почему не играет текущий файл.
+    ///
+    /// В отличие от уведомления не гаснет: иначе пользователь остаётся
+    /// перед чёрным окном без единого объяснения.
+    playback_error: Option<String>,
     /// Время текущего кадра — по нему гаснут уведомления.
     frame_time: f64,
     /// Дорожки текущего файла. Список меняется только при смене файла.
@@ -108,6 +126,7 @@ impl PithApp {
             volume: settings.volume,
             audio_languages: settings.audio_languages.clone(),
             subtitle_languages: settings.subtitle_priority.main_tags.clone(),
+            audio_device: settings.audio_device.clone(),
         };
 
         let mut watch_positions = WatchPositions::load(data_paths.clone());
@@ -144,6 +163,7 @@ impl PithApp {
             data_paths,
             subtitle_text: SubtitleText::default(),
             notice: None,
+            playback_error: None,
             frame_time: 0.0,
             tracks: Vec::new(),
             selected_tracks: subtitles::SelectedTracks::default(),
@@ -196,7 +216,18 @@ impl PithApp {
     }
 
     /// Открывает файл и запускает замер времени до первого кадра.
+    ///
+    /// Отсутствующий файл отсекается сразу: mpv на него отвечает лишь
+    /// событием ошибки спустя время, и пользователь успевает решить,
+    /// что плеер завис.
     pub fn open_file(&mut self, path: &str) {
+        if is_missing_local_file(path) {
+            tracing::warn!(path, "файла нет на диске");
+            self.report_playback_error("Файл не найден");
+            return;
+        }
+
+        self.playback_error = None;
         self.set_current_path(path);
 
         let Some(engine) = self.engine.as_mut() else {
@@ -207,6 +238,7 @@ impl PithApp {
 
         if let Err(e) = engine.load_file(path) {
             tracing::error!(error = %e, "не удалось открыть файл");
+            self.report_playback_error("Не удалось открыть файл");
         }
     }
 
@@ -288,6 +320,7 @@ impl PithApp {
         };
 
         let mut file_loaded = false;
+        let mut playback_failed = false;
 
         for event in engine.pump_events() {
             match event {
@@ -304,13 +337,20 @@ impl PithApp {
                     file_loaded = true;
                 }
                 EngineEvent::EndFile => tracing::debug!("файл закончился"),
+                EngineEvent::PlaybackError => playback_failed = true,
                 EngineEvent::Shutdown => tracing::info!("mpv завершает работу"),
             }
         }
 
         engine.refresh_state();
 
+        if playback_failed {
+            self.handle_playback_error();
+        }
+
         if file_loaded {
+            // Файл пошёл — прошлая жалоба больше не про него.
+            self.playback_error = None;
             // Подгонять окно будем в кадре: там доступны размеры экрана.
             self.fit_window_pending = true;
             self.window_resized_by_user = false;

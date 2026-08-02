@@ -15,6 +15,23 @@ use crate::render::RenderContext;
 pub const MIN_SPEED: f64 = 0.25;
 pub const MAX_SPEED: f64 = 4.0;
 
+/// Коды ошибок mpv, означающие «этот файл воспроизвести не удалось».
+///
+/// Значения из `mpv_error`: файл не открылся, играть нечего, формат
+/// неизвестен, формат не поддерживается. Остальные коды — сбои отдельных
+/// команд и свойств, из-за них плеер останавливать нельзя.
+const LOADING_FAILED: i32 = -13;
+const NOTHING_TO_PLAY: i32 = -16;
+const UNKNOWN_FORMAT: i32 = -17;
+const UNSUPPORTED: i32 = -18;
+
+fn is_playback_failure(code: i32) -> bool {
+    matches!(
+        code,
+        LOADING_FAILED | NOTHING_TO_PLAY | UNKNOWN_FORMAT | UNSUPPORTED
+    )
+}
+
 /// Состояние воспроизведения для отрисовки интерфейса.
 ///
 /// Все поля — «последнее известное»: если mpv ещё не сообщил значение,
@@ -56,6 +73,11 @@ pub enum EngineEvent {
     FileLoaded,
     /// Воспроизведение файла завершено.
     EndFile,
+    /// Файл не удалось прочитать или декодировать.
+    ///
+    /// Битый файл, отсутствующий кодек, файл удалили во время просмотра —
+    /// mpv сообщает обо всём этом одинаково, и плеер обязан остаться живым.
+    PlaybackError,
     /// mpv завершает работу.
     Shutdown,
 }
@@ -207,6 +229,13 @@ impl Engine {
                 }
                 Ok(Event::Shutdown) => events.push(EngineEvent::Shutdown),
                 Ok(_) => {}
+                // Неудачу с файлом libmpv2 отдаёт не событием, а ошибкой:
+                // `EndFile` с ненулевым кодом подменяется на `Err`.
+                Err(libmpv2::Error::Raw(code)) if is_playback_failure(code) => {
+                    tracing::error!(code, "файл не удалось воспроизвести");
+                    self.state.file_loaded = false;
+                    events.push(EngineEvent::PlaybackError);
+                }
                 Err(e) => {
                     // Ошибка разбора одного события не должна останавливать цикл.
                     tracing::warn!(error = %e, "ошибка при разборе события mpv");
@@ -309,5 +338,27 @@ impl Engine {
     pub fn active_hwdec(&self) -> String {
         self.property_string("hwdec-current")
             .unwrap_or_else(|_| "неизвестно".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn неудача_с_файлом_узнаётся_по_коду() {
+        assert!(is_playback_failure(UNKNOWN_FORMAT), "битый файл");
+        assert!(is_playback_failure(LOADING_FAILED), "файл не открылся");
+        assert!(is_playback_failure(UNSUPPORTED), "нет кодека");
+        assert!(is_playback_failure(NOTHING_TO_PLAY), "нечего играть");
+    }
+
+    #[test]
+    fn сбой_свойства_не_считается_неудачей_с_файлом() {
+        // Свойство недоступно (-10) и команда не выполнилась (-12) случаются
+        // в обычной работе: останавливать из-за них воспроизведение нельзя.
+        assert!(!is_playback_failure(-10));
+        assert!(!is_playback_failure(-12));
+        assert!(!is_playback_failure(0));
     }
 }

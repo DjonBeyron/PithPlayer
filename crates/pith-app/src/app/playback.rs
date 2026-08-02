@@ -6,6 +6,42 @@
 use super::PithApp;
 
 impl PithApp {
+    /// Разбирает ошибку воспроизведения от mpv.
+    ///
+    /// Битый файл, отсутствующий кодек, файл удалили во время просмотра —
+    /// плеер обязан остаться живым и сказать, что случилось (PLAN.md,
+    /// чек-лист этапа 6). Причину mpv не сообщает, поэтому различаем сами:
+    /// пропавший с диска файл — самый частый случай.
+    pub(super) fn handle_playback_error(&mut self) {
+        let missing = self
+            .current_path
+            .as_ref()
+            .is_some_and(|path| !path.exists());
+
+        let message = if missing {
+            "Файл пропал с диска"
+        } else {
+            "Не удалось воспроизвести файл"
+        };
+
+        tracing::error!(файл = ?self.current_path, missing, "{message}");
+
+        // Позицию просмотра не трогаем: файл может вернуться (сетевой диск,
+        // переподключённая флешка), и досмотреть его нужно с того же места.
+        self.report_playback_error(message);
+    }
+
+    /// Сообщает о неудаче: всплывашкой и надписью посреди окна.
+    pub(super) fn report_playback_error(&mut self, message: &str) {
+        self.playback_error = Some(message.to_string());
+        self.show_notice(message);
+    }
+
+    /// Почему не играет текущий файл.
+    pub fn playback_error(&self) -> Option<&str> {
+        self.playback_error.as_deref()
+    }
+
     /// Перемотка относительно текущей позиции с замером длительности.
     pub fn seek_relative(&mut self, seconds: f64) {
         let Some(engine) = self.engine.as_mut() else {

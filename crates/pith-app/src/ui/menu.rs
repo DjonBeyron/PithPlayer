@@ -50,6 +50,7 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
 
     show_audio_tracks(app, ui);
     show_subtitle_tracks(app, ui);
+    show_audio_devices(app, ui);
     show_speed(app, ui);
 
     ui.separator();
@@ -191,6 +192,38 @@ fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) {
     }
     if let Some(id) = secondary_choice {
         app.choose_secondary_subtitle_track(id);
+    }
+}
+
+/// Куда выводить звук. Переключается без перезапуска плеера.
+fn show_audio_devices(app: &mut PithApp, ui: &mut egui::Ui) {
+    let devices = app.audio_devices();
+    if devices.is_empty() {
+        return;
+    }
+
+    let current = app.current_audio_device();
+    let mut chosen = None;
+
+    ui.menu_button("Вывод звука", |ui| {
+        for device in &devices {
+            // Автоматический выбор mpv отдаёт первым — оставляем его наверху
+            // и подписываем понятнее, чем «Autoselect device».
+            let label = if device.is_auto() {
+                "Как в системе".to_string()
+            } else {
+                device.label()
+            };
+
+            if ui.radio(device.name == current, label).clicked() {
+                chosen = Some(device.name.clone());
+                ui.close();
+            }
+        }
+    });
+
+    if let Some(name) = chosen {
+        app.choose_audio_device(&name);
     }
 }
 
