@@ -12,8 +12,11 @@
 
 param(
     [Parameter(Mandatory = $true)][string]$File,
-    [string]$Exe = "target\release\pith-player.exe"
+    [string]$Release = "target\release"
 )
+
+# Песочница: позиции просмотра живого пользователя не затрагиваются.
+. "$PSScriptRoot\sandbox.ps1"
 
 Add-Type -AssemblyName System.Drawing
 
@@ -59,7 +62,7 @@ function Start-Player($argument) {
     # что он второй, отправит путь в пустоту и молча закроется.
     Start-Sleep -Seconds 3
 
-    $proc = Start-Process -FilePath $Exe -ArgumentList "`"$argument`"" -PassThru
+    $proc = Start-Process -FilePath $script:box.Exe -ArgumentList "`"$argument`"" -PassThru
     Start-Sleep -Seconds 6
     [Rob]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
     Start-Sleep -Seconds 1
@@ -76,6 +79,8 @@ function Check-Alive($proc, $case) {
         Write-Host "  ок: плеер жив и отвечает" -ForegroundColor Green
     }
 }
+
+$script:box = New-PithSandbox -Release $Release
 
 $temp = Join-Path $env:TEMP "pith_robustness"
 New-Item -ItemType Directory -Force $temp | Out-Null
@@ -130,4 +135,5 @@ Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
 Start-Sleep -Milliseconds 500
 Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
+Remove-PithSandbox $script:box
 Write-Host "`nготово"

@@ -6,12 +6,17 @@
 #
 # Снимок берётся через `PrintWindow`, а не с экрана: копия экрана отстаёт
 # от окна на секунду-другую и показывает уже неверное состояние.
+#
+# Работает в песочнице (см. sandbox.ps1): закладки живого пользователя
+# не затрагиваются.
 
 param(
     [Parameter(Mandatory = $true)][string]$File,
     [int]$Wait = 6,
-    [string]$Exe = "target\release\pith-player.exe"
+    [string]$Release = "target\release"
 )
+
+. "$PSScriptRoot\sandbox.ps1"
 
 Add-Type -AssemblyName System.Drawing
 
@@ -80,7 +85,9 @@ function Move-To($x, $y) {
     [ListsTest]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 300
 }
 
-$proc = Start-Process -FilePath $Exe -ArgumentList "`"$File`"" -PassThru
+$box = New-PithSandbox -Release $Release
+
+$proc = Start-Process -FilePath $box.Exe -ArgumentList "`"$File`"" -PassThru
 Start-Sleep -Seconds $Wait
 
 for ($i = 0; $i -lt 10; $i++) {
@@ -148,9 +155,8 @@ Save-Shot $proc "shot_lists_created.png"
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
-$file = "$env:APPDATA\PithPlayer\bookmarks.json"
-if (Test-Path $file) {
-    $data = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
+$data = Get-PithSandboxBookmarks $box
+if ($data) {
     foreach ($video in $data.videos) {
         $names = ($video.lists | ForEach-Object { "$($_.name) ($($_.bookmarks.Count))" }) -join ", "
         Write-Host "$($video.video_file_name): активен «$($video.active_list)»; списки: $names"
@@ -158,3 +164,5 @@ if (Test-Path $file) {
 } else {
     Write-Host "файл закладок не создан"
 }
+
+Remove-PithSandbox $box

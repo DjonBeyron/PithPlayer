@@ -12,10 +12,14 @@ param(
     [Parameter(Mandatory = $true)][string]$Folder,
     [int]$Count = 10,
     [int]$SecondsPerFile = 4,
-    [string]$Exe = "target\release\pith-player.exe"
+    [string]$Release = "target\release"
 )
 
 $ErrorActionPreference = "Stop"
+
+# Песочница: позиции просмотра живого пользователя не затрагиваются.
+. "$PSScriptRoot\sandbox.ps1"
+$box = New-PithSandbox -Release $Release
 
 $files = Get-ChildItem -LiteralPath $Folder -File |
     Where-Object { $_.Extension -in ".mkv", ".mp4", ".avi", ".mov", ".webm" } |
@@ -24,14 +28,14 @@ $files = Get-ChildItem -LiteralPath $Folder -File |
 if ($files.Count -lt 2) { throw "нужно хотя бы два видеофайла в $Folder" }
 Write-Host "файлов в прогоне: $($files.Count)"
 
-$proc = Start-Process -FilePath $Exe -ArgumentList "`"$($files[0].FullName)`"" -PassThru
+$proc = Start-Process -FilePath $box.Exe -ArgumentList "`"$($files[0].FullName)`"" -PassThru
 Start-Sleep -Seconds 6
 
 $rows = @()
 foreach ($file in $files) {
     # Первый файл уже открыт запуском выше.
     if ($file -ne $files[0]) {
-        Start-Process -FilePath $Exe -ArgumentList "`"$($file.FullName)`"" | Out-Null
+        Start-Process -FilePath $box.Exe -ArgumentList "`"$($file.FullName)`"" | Out-Null
     }
     Start-Sleep -Seconds $SecondsPerFile
 
@@ -51,6 +55,7 @@ foreach ($file in $files) {
 }
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+Remove-PithSandbox $box
 
 $rows | Format-Table -AutoSize
 

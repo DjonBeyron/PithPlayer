@@ -340,11 +340,15 @@ impl PithApp {
                 EngineEvent::FileLoaded => {
                     engine.refresh_video_size();
                     let active_hwdec = engine.active_hwdec();
+                    let audio = engine.audio_summary();
                     let state = engine.state();
                     tracing::info!(
                         width = state.display_width,
                         height = state.display_height,
                         hwdec_active = %active_hwdec,
+                        // Звук в логе: разбор жалоб вида «стало играть в моно»
+                        // без него сводится к гаданию.
+                        звук = %audio,
                         "файл загружен"
                     );
                     file_loaded = true;

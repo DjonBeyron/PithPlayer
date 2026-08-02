@@ -93,9 +93,17 @@ fn find_v4_dir() -> Option<PathBuf> {
 /// Какая стадия переноса уже выполнена.
 ///
 /// Метка без номера осталась от первых сборок — считаем её первой стадией.
+///
+/// Метку порядка байтов срезаем: файл могли переписать блокнотом или
+/// скриптом, и невидимый символ в начале превращал номер стадии в мусор —
+/// перенос запускался заново и перетирал данные.
 fn completed_stage(marker: &std::path::Path) -> u32 {
     match std::fs::read_to_string(marker) {
-        Ok(content) => content.trim().parse().unwrap_or(1),
+        Ok(content) => content
+            .trim_start_matches('\u{feff}')
+            .trim()
+            .parse()
+            .unwrap_or(1),
         Err(_) => 0,
     }
 }
@@ -162,6 +170,16 @@ mod tests {
     fn отсутствие_метки_означает_нулевую_стадию() {
         let dir = tempfile::tempdir().expect("временный каталог");
         assert_eq!(completed_stage(&dir.path().join(MARKER)), 0);
+    }
+
+    #[test]
+    fn метка_порядка_байтов_не_ломает_номер_стадии() {
+        // Так метку записывает PowerShell 5.1 через `Set-Content -Encoding utf8`.
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let marker = dir.path().join(MARKER);
+        std::fs::write(&marker, "\u{feff}2").expect("метка с BOM");
+
+        assert_eq!(completed_stage(&marker), 2, "перенос повторился бы заново");
     }
 
     /// Когда добавятся закладки, номер стадии вырастет — и перенос

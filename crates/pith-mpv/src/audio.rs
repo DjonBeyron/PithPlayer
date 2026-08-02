@@ -68,6 +68,24 @@ impl Engine {
             .unwrap_or_else(|_| AUTO_DEVICE.to_string())
     }
 
+    /// Сводка о звуке для журнала: что в файле, что на выходе, куда играем.
+    ///
+    /// Нужна для разбора жалоб на звук: по ней сразу видно, свернул ли
+    /// вывод стерео в моно и какое устройство выбрано.
+    pub fn audio_summary(&self) -> String {
+        let source = self
+            .property_string("audio-params/channel-count")
+            .unwrap_or_else(|_| "?".into());
+        let output = self
+            .property_string("audio-out-params/channel-count")
+            .unwrap_or_else(|_| "?".into());
+
+        format!(
+            "каналов в файле {source}, на выходе {output}, устройство {}",
+            self.audio_device()
+        )
+    }
+
     /// Переключает вывод звука.
     ///
     /// mpv сам пересоздаёт звуковой выход, перезапуск плеера не нужен.
