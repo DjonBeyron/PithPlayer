@@ -17,11 +17,13 @@ const HIT_HEIGHT: f32 = 22.0;
 /// Отрезок, который попадёт в сохранённый фрагмент.
 ///
 /// Считается от закладки: `[метка − отступ, метка − отступ + длительность]`.
-/// На полосе показывается жёлтым, чтобы было видно, что именно вырежется.
+/// На полосе показывается цветом своего списка, чтобы было видно, что
+/// именно вырежется и к какому списку относится.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FragmentRange {
     pub start: f64,
     pub end: f64,
+    pub color: egui::Color32,
 }
 
 impl FragmentRange {
@@ -29,15 +31,12 @@ impl FragmentRange {
     ///
     /// `bookmark` — время метки, `buffer` — отступ назад от неё,
     /// `duration` — длительность фрагмента. Всё в секундах.
-    ///
-    /// Вызывающая сторона появится на этапе 4 вместе с закладками;
-    /// сам расчёт готов и покрыт тестами.
-    #[allow(dead_code)]
-    pub fn from_bookmark(bookmark: f64, buffer: f64, duration: f64) -> Self {
+    pub fn from_bookmark(bookmark: f64, buffer: f64, duration: f64, color: egui::Color32) -> Self {
         let start = (bookmark - buffer).max(0.0);
         Self {
             start,
             end: start + duration.max(0.0),
+            color,
         }
     }
 }
@@ -53,7 +52,7 @@ pub struct TimelineResponse {
 
 /// Рисует полосу перемотки и возвращает действия пользователя.
 ///
-/// `fragments` — отрезки будущих фрагментов, подсвечиваются жёлтым.
+/// `fragments` — отрезки будущих фрагментов, каждый цветом своего списка.
 pub fn show(
     ui: &mut egui::Ui,
     position: f64,
@@ -128,7 +127,7 @@ pub fn show(
     result
 }
 
-/// Рисует жёлтые отрезки будущих фрагментов.
+/// Рисует цветные отрезки будущих фрагментов.
 fn paint_fragments(
     painter: &egui::Painter,
     track: egui::Rect,
@@ -152,7 +151,7 @@ fn paint_fragments(
             egui::pos2(right.max(left + 2.0), track.max.y),
         );
 
-        painter.rect_filled(rect, 0.0, theme::FRAGMENT);
+        painter.rect_filled(rect, 0.0, fragment.color);
     }
 }
 
@@ -169,9 +168,15 @@ fn time_at(x: f32, track: egui::Rect, duration: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{FragmentRange, time_at};
+    use crate::theme;
 
     fn track() -> egui::Rect {
         egui::Rect::from_min_size(egui::pos2(100.0, 0.0), egui::vec2(200.0, 5.0))
+    }
+
+    /// Отрезок с цветом первого списка — цвет в расчёте не участвует.
+    fn range(bookmark: f64, buffer: f64, duration: f64) -> FragmentRange {
+        FragmentRange::from_bookmark(bookmark, buffer, duration, theme::list_color(0))
     }
 
     #[test]
@@ -198,8 +203,8 @@ mod tests {
 
     #[test]
     fn закладка_без_отступа_даёт_отрезок_вперёд() {
-        // Метка на 15-й секунде, длительность 10 с — жёлтым будет 15…25.
-        let range = FragmentRange::from_bookmark(15.0, 0.0, 10.0);
+        // Метка на 15-й секунде, длительность 10 с — цветом будет 15…25.
+        let range = range(15.0, 0.0, 10.0);
         assert_eq!(range.start, 15.0);
         assert_eq!(range.end, 25.0);
     }
@@ -207,7 +212,7 @@ mod tests {
     #[test]
     fn отступ_сдвигает_отрезок_назад() {
         // Метка на 60-й, отступ 10 с, длительность 30 с — отрезок 50…80.
-        let range = FragmentRange::from_bookmark(60.0, 10.0, 30.0);
+        let range = range(60.0, 10.0, 30.0);
         assert_eq!(range.start, 50.0);
         assert_eq!(range.end, 80.0);
     }
@@ -215,14 +220,26 @@ mod tests {
     #[test]
     fn отрезок_не_уходит_за_начало_файла() {
         // Метка на 3-й секунде с отступом 10 с — начало обрезается нулём.
-        let range = FragmentRange::from_bookmark(3.0, 10.0, 20.0);
+        let range = range(3.0, 10.0, 20.0);
         assert_eq!(range.start, 0.0);
         assert_eq!(range.end, 20.0);
     }
 
     #[test]
     fn нулевая_длительность_даёт_пустой_отрезок() {
-        let range = FragmentRange::from_bookmark(15.0, 0.0, 0.0);
+        let range = range(15.0, 0.0, 0.0);
         assert_eq!(range.start, range.end);
+    }
+
+    #[test]
+    fn у_каждого_списка_свой_цвет() {
+        // Полоса красит отрезок цветом из самого `FragmentRange`, поэтому
+        // разным спискам достаточно разных цветов в палитре.
+        assert_ne!(theme::list_color(0), theme::list_color(1));
+        assert_eq!(
+            theme::list_color(0),
+            theme::list_color(6),
+            "после шести списков цвета идут по кругу"
+        );
     }
 }

@@ -1,10 +1,18 @@
 //! Запуск нарезки отрезков и слежение за ходом работы.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
 
 use pith_fragments::{ExtractionOutcome, FragmentJob};
+use pith_store::BookmarkList;
 
 use super::PithApp;
+
+/// Что и куда режем: один список закладок и его папка вывода.
+struct ListPlan {
+    list: BookmarkList,
+    dir: PathBuf,
+}
 
 /// Ход нарезки.
 #[derive(Debug, Clone, Copy)]
@@ -42,11 +50,22 @@ impl PithApp {
 
     /// Запускает нарезку всех закладок активного списка.
     pub fn start_extraction(&mut self) {
+        let plans = self.plan_active_list();
+        self.start_jobs(plans);
+    }
+
+    /// Режет все списки видео: каждый — в свою подпапку с именем списка.
+    pub fn start_extraction_all_lists(&mut self) {
+        let plans = self.plan_all_lists();
+        self.start_jobs(plans);
+    }
+
+    fn start_jobs(&mut self, plans: Vec<ListPlan>) {
         if self.extraction.progress.is_some() {
             return;
         }
 
-        let Some(jobs) = self.build_jobs() else {
+        let Some(jobs) = self.build_jobs(plans) else {
             return;
         };
 
@@ -78,29 +97,66 @@ impl PithApp {
         });
     }
 
-    /// Готовит задачи для всех закладок активного списка.
-    fn build_jobs(&mut self) -> Option<Vec<FragmentJob>> {
+    /// Активный список и папка, куда лягут его отрезки.
+    fn plan_active_list(&self) -> Vec<ListPlan> {
+        let Some(list) = self.current_bookmarks().and_then(|v| v.active()) else {
+            return Vec::new();
+        };
+        let Some(dir) = self.output_dir_for(list) else {
+            return Vec::new();
+        };
+
+        vec![ListPlan {
+            list: list.clone(),
+            dir,
+        }]
+    }
+
+    /// Все списки видео, каждый — в подпапку со своим именем.
+    ///
+    /// Подпапка нужна, чтобы отрезки разных списков не перемешивались:
+    /// одинаковые реплики в разных списках дали бы одно имя файла.
+    fn plan_all_lists(&self) -> Vec<ListPlan> {
+        let Some(video) = self.current_bookmarks() else {
+            return Vec::new();
+        };
+
+        video
+            .lists
+            .iter()
+            .filter(|list| !list.bookmarks.is_empty())
+            .filter_map(|list| {
+                let dir = self
+                    .output_dir_for(list)?
+                    .join(pith_fragments::sanitize(&list.name));
+
+                Some(ListPlan {
+                    list: list.clone(),
+                    dir,
+                })
+            })
+            .collect()
+    }
+
+    /// Готовит задачи FFmpeg по списку закладок каждого набора.
+    fn build_jobs(&mut self, plans: Vec<ListPlan>) -> Option<Vec<FragmentJob>> {
         let source = self.current_path.clone()?;
-        let output_dir = self.fragments_output_dir()?;
-
-        if let Err(e) = std::fs::create_dir_all(&output_dir) {
-            tracing::error!(error = %e, ?output_dir, "не удалось создать папку вывода");
-            self.show_notice("Не удалось создать папку для отрезков");
-            return None;
-        }
-
-        let video = self.current_bookmarks()?;
-        let list = video.active()?;
 
         let reencode = self.settings.fragments.reencode;
         let audio_index = self.current_audio_index();
         let extension = self.container_for_current_file();
 
-        let jobs = list
-            .bookmarks
-            .iter()
-            .map(|bookmark| {
-                let requested = (bookmark.seconds() - f64::from(list.buffer_sec)).max(0.0);
+        let mut jobs = Vec::new();
+
+        for plan in plans {
+            if let Err(e) = std::fs::create_dir_all(&plan.dir) {
+                tracing::error!(error = %e, папка = ?plan.dir, "не удалось создать папку вывода");
+                self.show_notice("Не удалось создать папку для отрезков");
+                return None;
+            }
+
+            for bookmark in &plan.list.bookmarks {
+                let requested = (bookmark.seconds() - f64::from(plan.list.buffer_sec)).max(0.0);
 
                 // Перепаковка режет по опорным кадрам: встаём точно на них,
                 // иначе отрезок начинается с чёрного экрана.
@@ -110,19 +166,20 @@ impl PithApp {
                     pith_fragments::align_to_keyframe(&source, requested).unwrap_or(requested)
                 };
 
-                let output =
-                    pith_fragments::unique_output_path(&output_dir, &bookmark.label(), extension);
-
-                FragmentJob {
+                jobs.push(FragmentJob {
                     source: source.clone(),
-                    output,
+                    output: pith_fragments::unique_output_path(
+                        &plan.dir,
+                        &bookmark.label(),
+                        extension,
+                    ),
                     start,
-                    duration: f64::from(list.duration_sec),
+                    duration: f64::from(plan.list.duration_sec),
                     audio_index,
                     reencode,
-                }
-            })
-            .collect();
+                });
+            }
+        }
 
         Some(jobs)
     }
@@ -193,64 +250,7 @@ impl PithApp {
             self.show_notice(&summary);
         }
     }
-
-    /// Видна ли панель отрезков.
-    pub fn bookmarks_panel_open(&self) -> bool {
-        self.bookmarks_panel || self.bookmarks_panel_pinned
-    }
-
-    pub fn bookmarks_panel_pinned(&self) -> bool {
-        self.bookmarks_panel_pinned
-    }
-
-    /// Закрепляет панель, чтобы она не пряталась при уходе курсора.
-    pub fn toggle_bookmarks_panel(&mut self) {
-        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
-        self.bookmarks_panel = false;
-    }
-
-    /// Показывает панель при наведении на правый край окна.
-    ///
-    /// Так она вызывалась в v4: подвести курсор к правой стороне —
-    /// панель выезжает, увести — прячется.
-    pub(super) fn update_bookmarks_panel_hover(&mut self, ctx: &egui::Context) {
-        if self.bookmarks_panel_pinned {
-            return;
-        }
-
-        let screen = ctx.input(|i| i.viewport_rect());
-        let Some(pointer) = ctx.input(|i| i.pointer.hover_pos()) else {
-            // Курсор вне окна — прятать не спешим: он мог уйти на панель
-            // соседнего монитора.
-            return;
-        };
-
-        let was_open = self.bookmarks_panel;
-
-        if pointer.x >= screen.max.x - HOVER_ZONE_WIDTH {
-            self.bookmarks_panel = true;
-        } else if self.bookmarks_panel && pointer.x < screen.max.x - PANEL_KEEP_WIDTH {
-            // Пока курсор над самой панелью, она остаётся на месте.
-            self.bookmarks_panel = false;
-        }
-
-        if was_open != self.bookmarks_panel {
-            tracing::debug!(
-                открыта = self.bookmarks_panel,
-                курсор_x = pointer.x,
-                "панель отрезков"
-            );
-        }
-    }
 }
-
-/// Ширина полосы у правого края, вызывающей панель.
-const HOVER_ZONE_WIDTH: f32 = 40.0;
-
-/// До какой границы слева панель считается «под курсором».
-///
-/// Чуть шире самой панели: иначе она мигала бы на её краю.
-const PANEL_KEEP_WIDTH: f32 = 380.0;
 
 fn summarize(progress: ExtractionProgress) -> String {
     if progress.failed == 0 {

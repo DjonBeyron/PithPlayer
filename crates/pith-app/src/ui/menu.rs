@@ -44,6 +44,8 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
+    show_bookmark_lists(app, ui);
+
     ui.separator();
 
     show_audio_tracks(app, ui);
@@ -67,6 +69,40 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
     if ui.button("Полный экран").clicked() {
         app.toggle_fullscreen(ui.ctx());
         ui.close();
+    }
+}
+
+/// Переключение списка отрезков, не открывая панель.
+fn show_bookmark_lists(app: &mut PithApp, ui: &mut egui::Ui) {
+    let names = app.list_names();
+    let Some(active) = app.active_list_name() else {
+        return;
+    };
+
+    let mut chosen = None;
+    let mut create = false;
+
+    ui.menu_button(format!("Список отрезков: {active}"), |ui| {
+        for name in &names {
+            if ui.radio(*name == active, name).clicked() {
+                chosen = Some(name.clone());
+                ui.close();
+            }
+        }
+
+        ui.separator();
+
+        if ui.button("Новый список…").clicked() {
+            create = true;
+            ui.close();
+        }
+    });
+
+    if let Some(name) = chosen {
+        app.switch_list(&name);
+    }
+    if create {
+        app.open_new_list_dialog();
     }
 }
 

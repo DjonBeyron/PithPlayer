@@ -2,10 +2,14 @@
 
 use std::path::Path;
 
-use pith_store::VideoBookmarks;
+use pith_store::{BookmarkList, VideoBookmarks};
 
 use super::PithApp;
+use crate::theme;
 use crate::ui::FragmentRange;
+
+/// Насколько приглушаются отрезки неактивных списков.
+const DIMMED: f32 = 0.4;
 
 impl PithApp {
     /// Ключ текущего видео в хранилище закладок — имя файла без расширения.
@@ -16,10 +20,27 @@ impl PithApp {
             .map(|s| s.to_string_lossy().to_string())
     }
 
+    /// Открыт ли файл.
+    ///
+    /// Отдельная проверка от `current_bookmarks`: у только что открытого
+    /// видео записи в хранилище ещё нет, но панель отрезков работать обязана.
+    pub fn has_open_file(&self) -> bool {
+        self.current_path.is_some()
+    }
+
     /// Закладки текущего видео.
     pub fn current_bookmarks(&self) -> Option<&VideoBookmarks> {
         let key = self.video_key()?;
         self.bookmarks.for_video(&key)
+    }
+
+    /// Закладки текущего видео для правки; запись создаётся при первом обращении.
+    pub(super) fn current_bookmarks_mut(&mut self) -> Option<&mut VideoBookmarks> {
+        let key = self.video_key()?;
+        let duration = self.settings.fragments.duration_sec;
+        let buffer = self.settings.fragments.buffer_sec;
+
+        Some(self.bookmarks.for_video_mut(&key, duration, buffer))
     }
 
     /// Ставит закладку на текущей позиции.
@@ -113,37 +134,74 @@ impl PithApp {
         }
     }
 
-    /// Отрезки активного списка — те самые жёлтые области на полосе.
+    /// Отрезки всех списков — те самые цветные области на полосе.
+    ///
+    /// Каждому списку — свой цвет, чтобы было видно принадлежность метки
+    /// (PLAN.md §6.5). Неактивные приглушены, активный рисуется последним
+    /// и потому остаётся поверх остальных.
     pub fn fragment_ranges(&self) -> Vec<FragmentRange> {
         let Some(video) = self.current_bookmarks() else {
             return Vec::new();
         };
-        let Some(list) = video.active() else {
-            return Vec::new();
-        };
 
-        list.bookmarks
+        let mut ranges = Vec::new();
+
+        for (index, list) in video.lists.iter().enumerate() {
+            let active = list.name == video.active_list;
+            if active {
+                continue;
+            }
+            push_ranges(
+                &mut ranges,
+                list,
+                theme::list_color(index).gamma_multiply(DIMMED),
+            );
+        }
+
+        if let Some((index, list)) = video
+            .lists
             .iter()
-            .map(|b| {
-                FragmentRange::from_bookmark(
-                    b.seconds(),
-                    f64::from(list.buffer_sec),
-                    f64::from(list.duration_sec),
-                )
-            })
-            .collect()
+            .enumerate()
+            .find(|(_, l)| l.name == video.active_list)
+        {
+            push_ranges(&mut ranges, list, theme::list_color(index));
+        }
+
+        ranges
     }
 
-    /// Куда складывать вырезанные фрагменты.
-    ///
-    /// У списка может быть своя папка; иначе берётся общая из настроек,
-    /// а если и её нет — папка рядом с исходным файлом.
+    /// Цвет активного списка — им же помечены строки в панели.
+    pub fn active_list_color(&self) -> egui::Color32 {
+        let index = self
+            .current_bookmarks()
+            .and_then(|v| v.lists.iter().position(|l| l.name == v.active_list))
+            .unwrap_or(0);
+
+        theme::list_color(index)
+    }
+
+    /// Куда складывать отрезки активного списка.
     pub fn fragments_output_dir(&self) -> Option<std::path::PathBuf> {
         let list_dir = self
             .current_bookmarks()
             .and_then(|v| v.active())
             .and_then(|l| l.output_dir.clone());
 
+        self.output_dir_or_default(list_dir)
+    }
+
+    /// Куда складывать отрезки указанного списка.
+    ///
+    /// У списка может быть своя папка; иначе берётся общая из настроек,
+    /// а если и её нет — папка рядом с исходным файлом.
+    pub(super) fn output_dir_for(&self, list: &BookmarkList) -> Option<std::path::PathBuf> {
+        self.output_dir_or_default(list.output_dir.clone())
+    }
+
+    fn output_dir_or_default(
+        &self,
+        list_dir: Option<std::path::PathBuf>,
+    ) -> Option<std::path::PathBuf> {
         list_dir
             .or_else(|| self.settings.fragments.output_dir.clone())
             .or_else(|| {
@@ -153,4 +211,79 @@ impl PithApp {
                     .map(Path::to_path_buf)
             })
     }
+
+    /// Видна ли панель отрезков.
+    pub fn bookmarks_panel_open(&self) -> bool {
+        self.bookmarks_panel || self.bookmarks_panel_pinned
+    }
+
+    pub fn bookmarks_panel_pinned(&self) -> bool {
+        self.bookmarks_panel_pinned
+    }
+
+    /// Закрепляет панель, чтобы она не пряталась при уходе курсора.
+    pub fn toggle_bookmarks_panel(&mut self) {
+        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
+        self.bookmarks_panel = false;
+    }
+
+    /// Показывает панель при наведении на правый край окна.
+    ///
+    /// Так она вызывалась в v4: подвести курсор к правой стороне —
+    /// панель выезжает, увести — прячется.
+    pub(super) fn update_bookmarks_panel_hover(&mut self, ctx: &egui::Context) {
+        if self.bookmarks_panel_pinned {
+            return;
+        }
+
+        // Пока открыт диалог списка, панель не должна уезжать из-под него.
+        if self.list_dialog.is_some() {
+            self.bookmarks_panel = true;
+            return;
+        }
+
+        let screen = ctx.input(|i| i.viewport_rect());
+        let Some(pointer) = ctx.input(|i| i.pointer.hover_pos()) else {
+            // Курсор вне окна — прятать не спешим: он мог уйти на панель
+            // соседнего монитора.
+            return;
+        };
+
+        let was_open = self.bookmarks_panel;
+
+        if pointer.x >= screen.max.x - HOVER_ZONE_WIDTH {
+            self.bookmarks_panel = true;
+        } else if self.bookmarks_panel && pointer.x < screen.max.x - PANEL_KEEP_WIDTH {
+            // Пока курсор над самой панелью, она остаётся на месте.
+            self.bookmarks_panel = false;
+        }
+
+        if was_open != self.bookmarks_panel {
+            tracing::debug!(
+                открыта = self.bookmarks_panel,
+                курсор_x = pointer.x,
+                "панель отрезков"
+            );
+        }
+    }
+}
+
+/// Ширина полосы у правого края, вызывающей панель.
+const HOVER_ZONE_WIDTH: f32 = 40.0;
+
+/// До какой границы слева панель считается «под курсором».
+///
+/// Чуть шире самой панели: иначе она мигала бы на её краю.
+const PANEL_KEEP_WIDTH: f32 = 380.0;
+
+/// Складывает отрезки списка в общий набор для полосы перемотки.
+fn push_ranges(ranges: &mut Vec<FragmentRange>, list: &BookmarkList, color: egui::Color32) {
+    ranges.extend(list.bookmarks.iter().map(|b| {
+        FragmentRange::from_bookmark(
+            b.seconds(),
+            f64::from(list.buffer_sec),
+            f64::from(list.duration_sec),
+            color,
+        )
+    }));
 }

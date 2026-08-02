@@ -4,7 +4,7 @@
 
 use crate::app::PithApp;
 use crate::theme;
-use crate::ui::format_time;
+use crate::ui::{format_time, lists};
 
 /// Ширина панели.
 const PANEL_WIDTH: f32 = 320.0;
@@ -15,14 +15,23 @@ const PANEL_TOP: f32 = 240.0;
 /// Отступ от правого края окна.
 const PANEL_MARGIN: f32 = 36.0;
 
+/// Что пользователь сделал в панели за кадр.
+#[derive(Default)]
+struct PanelActions {
+    jump_to: Option<f64>,
+    remove: Option<i64>,
+    /// Перенос закладки: время метки и имя списка-приёмника.
+    move_to: Option<(i64, String)>,
+    extract_active: bool,
+    extract_all: bool,
+}
+
 pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     if !app.bookmarks_panel_open() {
         return;
     }
 
-    let mut jump_to = None;
-    let mut remove = None;
-    let mut start_extraction = false;
+    let mut actions = PanelActions::default();
 
     // Своя область, а не `Window`: панель выезжает и прячется сама,
     // ей не нужны ни заголовок, ни перетаскивание.
@@ -46,62 +55,46 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                 .corner_radius(6.0)
                 .show(ui, |ui| {
                     ui.set_width(PANEL_WIDTH);
-
-                    ui.label(
-                        egui::RichText::new("Отрезки")
-                            .color(theme::TEXT_PRIMARY)
-                            .strong()
-                            .size(16.0),
-                    );
-                    ui.separator();
-
-                    show_summary(app, ui);
-                    ui.separator();
-
-                    show_list(app, ui, &mut jump_to, &mut remove);
-
-                    ui.separator();
-                    start_extraction = show_actions(app, ui);
+                    show_body(app, ui, &mut actions);
                 });
         });
 
-    if let Some(time) = jump_to {
-        app.seek_absolute(time);
-    }
-    if let Some(time_ms) = remove {
-        app.remove_bookmark_at(time_ms);
-    }
-    if start_extraction {
-        app.start_extraction();
-    }
+    apply(app, actions);
 }
 
-/// Сводка: список, длительность отрезка, папка вывода.
-fn show_summary(app: &PithApp, ui: &mut egui::Ui) {
-    let Some(video) = app.current_bookmarks() else {
+fn show_body(app: &mut PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
+    ui.label(
+        egui::RichText::new("Отрезки")
+            .color(theme::TEXT_PRIMARY)
+            .strong()
+            .size(16.0),
+    );
+    ui.separator();
+
+    if !app.has_open_file() {
         ui.label(egui::RichText::new("Файл не открыт").color(theme::TEXT_SECONDARY));
         return;
-    };
+    }
 
-    let Some(list) = video.active() else {
-        return;
-    };
+    lists::show_switcher(app, ui);
+    show_summary(app, ui);
+    ui.separator();
 
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(&list.name)
-                .color(theme::TEXT_PRIMARY)
-                .strong(),
-        );
-        ui.label(
-            egui::RichText::new(format!(
-                "{} с, отступ {} с",
-                list.duration_sec, list.buffer_sec
-            ))
+    show_list(app, ui, actions);
+
+    ui.separator();
+    show_actions(app, ui, actions);
+}
+
+/// Параметры активного списка: длительность отрезка и папка вывода.
+fn show_summary(app: &PithApp, ui: &mut egui::Ui) {
+    let (duration_sec, buffer_sec) = app.active_list_timing();
+
+    ui.label(
+        egui::RichText::new(format!("{duration_sec} с, отступ {buffer_sec} с"))
             .color(theme::TEXT_SECONDARY)
             .small(),
-        );
-    });
+    );
 
     if let Some(dir) = app.fragments_output_dir() {
         ui.label(
@@ -113,74 +106,147 @@ fn show_summary(app: &PithApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Список закладок активного списка.
-fn show_list(
-    app: &PithApp,
-    ui: &mut egui::Ui,
-    jump_to: &mut Option<f64>,
-    remove: &mut Option<i64>,
-) {
-    let Some(list) = app.current_bookmarks().and_then(|v| v.active()) else {
+/// Закладки активного списка.
+fn show_list(app: &PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
+    let list = app.current_bookmarks().and_then(|v| v.active());
+
+    let Some((video, list)) = app.current_bookmarks().zip(list) else {
+        show_empty(ui);
         return;
     };
 
     if list.bookmarks.is_empty() {
-        ui.label(
-            egui::RichText::new("Пусто. Клавиша T ставит закладку на текущем месте.")
-                .color(theme::TEXT_SECONDARY),
-        );
+        show_empty(ui);
         return;
     }
+
+    // Куда можно перенести метку — все списки, кроме текущего.
+    let others: Vec<String> = video
+        .names()
+        .into_iter()
+        .filter(|name| *name != video.active_list)
+        .collect();
 
     egui::ScrollArea::vertical()
         .max_height(360.0)
         .show(ui, |ui| {
             for bookmark in &list.bookmarks {
                 ui.horizontal(|ui| {
-                    let label =
-                        format!("{}  {}", format_time(bookmark.seconds()), bookmark.label());
+                    // Без названия подписью служит само время — второй раз
+                    // его показывать незачем.
+                    let label = match &bookmark.name {
+                        Some(name) => format!("{}  {name}", format_time(bookmark.seconds())),
+                        None => format_time(bookmark.seconds()),
+                    };
 
-                    if ui
+                    let row = ui
                         .selectable_label(false, label)
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .clicked()
-                    {
-                        *jump_to = Some(bookmark.seconds());
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                    if row.clicked() {
+                        actions.jump_to = Some(bookmark.seconds());
                     }
 
-                    if ui.small_button("✕").on_hover_text("Убрать").clicked() {
-                        *remove = Some(bookmark.time_ms);
+                    row.context_menu(|ui| {
+                        show_move_menu(ui, bookmark.time_ms, &others, actions);
+                    });
+
+                    // Не «✕»: этого знака нет в шрифтах egui, кнопка выходила
+                    // пустым квадратом.
+                    if ui.small_button("🗑").on_hover_text("Убрать").clicked() {
+                        actions.remove = Some(bookmark.time_ms);
                     }
                 });
             }
         });
 }
 
-/// Кнопка запуска нарезки и ход выполнения.
-fn show_actions(app: &PithApp, ui: &mut egui::Ui) -> bool {
+fn show_empty(ui: &mut egui::Ui) {
+    ui.label(
+        egui::RichText::new("Пусто. Клавиша T ставит закладку на текущем месте.")
+            .color(theme::TEXT_SECONDARY),
+    );
+}
+
+/// Меню переноса закладки в другой список.
+fn show_move_menu(ui: &mut egui::Ui, time_ms: i64, others: &[String], actions: &mut PanelActions) {
+    if others.is_empty() {
+        ui.label(egui::RichText::new("Других списков нет").color(theme::TEXT_SECONDARY));
+        return;
+    }
+
+    ui.label(egui::RichText::new("Перенести в список").color(theme::TEXT_SECONDARY));
+
+    for name in others {
+        if ui.button(name).clicked() {
+            actions.move_to = Some((time_ms, name.clone()));
+            ui.close();
+        }
+    }
+}
+
+/// Кнопки запуска нарезки и ход выполнения.
+fn show_actions(app: &PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
     if let Some(progress) = app.extraction_progress() {
         ui.label(
             egui::RichText::new(format!("Нарезка: {} из {}", progress.done, progress.total))
                 .color(theme::ACCENT),
         );
         ui.add(egui::ProgressBar::new(progress.fraction()).show_percentage());
-        return false;
+        return;
     }
 
-    let count = app
-        .current_bookmarks()
-        .and_then(|v| v.active())
-        .map(|l| l.bookmarks.len())
-        .unwrap_or(0);
+    let Some(video) = app.current_bookmarks() else {
+        return;
+    };
 
-    if count == 0 {
-        return false;
+    let active_count = video.active().map(|l| l.bookmarks.len()).unwrap_or(0);
+    let total: usize = video.lists.iter().map(|l| l.bookmarks.len()).sum();
+
+    if total == 0 {
+        return;
     }
 
-    ui.add_enabled(
-        app.can_extract(),
-        egui::Button::new(format!("Вырезать отрезки ({count})")),
-    )
-    .on_disabled_hover_text("Нужен ffmpeg.exe рядом с плеером")
-    .clicked()
+    let can_extract = app.can_extract();
+
+    if active_count > 0 {
+        actions.extract_active |= ui
+            .add_enabled(
+                can_extract,
+                egui::Button::new(format!("Вырезать отрезки ({active_count})")),
+            )
+            .on_disabled_hover_text("Нужен ffmpeg.exe рядом с плеером")
+            .clicked();
+    }
+
+    // Все списки — только когда их больше одного: иначе кнопка повторяет
+    // соседнюю и лишь путает.
+    if video.lists.len() > 1 {
+        actions.extract_all |= ui
+            .add_enabled(
+                can_extract,
+                egui::Button::new(format!("Вырезать все списки ({total})")),
+            )
+            .on_hover_text("Каждый список — в свою подпапку")
+            .on_disabled_hover_text("Нужен ffmpeg.exe рядом с плеером")
+            .clicked();
+    }
+}
+
+fn apply(app: &mut PithApp, actions: PanelActions) {
+    if let Some(time) = actions.jump_to {
+        app.seek_absolute(time);
+    }
+    if let Some(time_ms) = actions.remove {
+        app.remove_bookmark_at(time_ms);
+    }
+    if let Some((time_ms, target)) = actions.move_to {
+        app.move_bookmark_to_list(time_ms, &target);
+    }
+    if actions.extract_active {
+        app.start_extraction();
+    }
+    if actions.extract_all {
+        app.start_extraction_all_lists();
+    }
 }

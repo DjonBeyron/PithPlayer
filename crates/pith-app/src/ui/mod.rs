@@ -6,6 +6,7 @@
 mod bookmarks;
 mod controls;
 mod hotkeys;
+mod lists;
 mod menu;
 mod metrics;
 mod migration;
@@ -18,6 +19,7 @@ mod timeline;
 pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
 pub use hotkeys::handle_hotkeys;
+pub use lists::show_dialog as show_list_dialog;
 pub use menu::show_items as show_menu_items;
 pub use migration::show as show_migration_report;
 pub use notice::show as show_notice;

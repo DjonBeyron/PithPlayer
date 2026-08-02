@@ -14,7 +14,9 @@ mod settings;
 mod subtitle_priority;
 mod watch_positions;
 
-pub use bookmarks::{BookmarkList, Bookmarks, DEFAULT_LIST, TimeBookmark, VideoBookmarks};
+pub use bookmarks::{
+    BookmarkList, Bookmarks, DEFAULT_LIST, ListError, TimeBookmark, VideoBookmarks,
+};
 pub use error::{Result, StoreError};
 pub use file_key::{FileKey, file_key, key_from_parts};
 pub use migration::{MigrationReport, migrate_watch_positions};
