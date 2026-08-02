@@ -78,6 +78,19 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         app.open_fragment_settings();
         ui.close();
     }
+
+    // Ассоциации меняют настройки системы, поэтому пункт только открывает
+    // подтверждение, а не выполняет действие сразу.
+    let label = if app.file_types_registered() {
+        "Отвязать видеофайлы…"
+    } else {
+        "Связать видеофайлы с плеером…"
+    };
+
+    if ui.button(label).clicked() {
+        app.ask_file_types();
+        ui.close();
+    }
 }
 
 /// Переключение списка отрезков, не открывая панель.

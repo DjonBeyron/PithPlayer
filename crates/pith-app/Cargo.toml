@@ -23,6 +23,10 @@ tracing-subscriber.workspace = true
 rfd = "0.15"
 # Буфер обмена для копирования реплик субтитров.
 arboard = "3"
+# Разбор .ico в пиксели: eframe принимает иконку окна только так.
+image = { version = "0.25", default-features = false, features = ["ico"] }
+# Файловые ассоциации в HKCU: делаются по явному действию пользователя.
+winreg = "0.52"
 
 [dev-dependencies]
 tempfile = "3"

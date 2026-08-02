@@ -5,6 +5,7 @@
 
 mod bookmarks;
 mod controls;
+mod file_types;
 mod fragment_settings;
 mod hotkeys;
 mod lists;
@@ -19,6 +20,7 @@ mod timeline;
 
 pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
+pub use file_types::show as show_file_types_prompt;
 pub use fragment_settings::show as show_fragment_settings;
 pub use hotkeys::handle_hotkeys;
 pub use lists::show_dialog as show_list_dialog;

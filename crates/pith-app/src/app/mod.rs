@@ -7,6 +7,7 @@ mod audio;
 mod bookmarks;
 mod clipboard;
 mod extraction;
+mod file_types;
 mod fragment_settings;
 mod frame;
 mod import_v4;
@@ -25,6 +26,7 @@ use pith_store::{DataPaths, Settings, WatchPositions};
 use crate::bench::Metrics;
 
 use clipboard::Notice;
+pub use file_types::FileTypesPrompt;
 pub use fragment_settings::FragmentSettingsDialog;
 pub use lists::ListDialog;
 
@@ -108,6 +110,10 @@ pub struct PithApp {
     list_dialog: Option<ListDialog>,
     /// Открытый диалог общих настроек нарезки.
     fragment_settings: Option<FragmentSettingsDialog>,
+    /// Спрошенное подтверждение на смену файловых ассоциаций.
+    file_types_prompt: Option<FileTypesPrompt>,
+    /// Связаны ли файлы с плеером. `None` — ещё не спрашивали реестр.
+    file_types_registered: Option<bool>,
     /// Ход нарезки.
     extraction: extraction::ExtractionState,
 }
@@ -177,6 +183,8 @@ impl PithApp {
             bookmarks_panel_pinned: false,
             list_dialog: None,
             fragment_settings: None,
+            file_types_prompt: None,
+            file_types_registered: None,
             extraction: extraction::ExtractionState::default(),
         };
 
