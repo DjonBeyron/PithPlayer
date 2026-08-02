@@ -27,6 +27,7 @@ struct Actions {
     reset_speed: bool,
     copy_subtitle: bool,
     toggle_subtitles: bool,
+    open_search: bool,
 }
 
 pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
@@ -61,12 +62,19 @@ pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
     if actions.toggle_subtitles {
         app.toggle_subtitles();
     }
+    if actions.open_search {
+        app.open_search();
+    }
 }
 
 fn collect_actions(i: &egui::InputState) -> Actions {
     use egui::Key;
 
-    let mut actions = Actions::default();
+    let mut actions = Actions {
+        // Привычное сочетание для поиска.
+        open_search: i.modifiers.ctrl && i.key_pressed(Key::F),
+        ..Default::default()
+    };
 
     // Шаг перемотки зависит от модификатора: как в v4.
     let step = if i.modifiers.ctrl {
@@ -76,6 +84,11 @@ fn collect_actions(i: &egui::InputState) -> Actions {
     } else {
         SEEK_STEP
     };
+
+    // Ctrl+F занят поиском, поэтому полный экран по F — только без модификатора.
+    if actions.open_search {
+        return actions;
+    }
 
     for key in pressed_keys(i) {
         match key {

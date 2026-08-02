@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 pith-mpv = { path = "../pith-mpv" }
 pith-store = { path = "../pith-store" }
+pith-subs = { path = "../pith-subs" }
 eframe.workspace = true
 egui.workspace = true
 glow.workspace = true

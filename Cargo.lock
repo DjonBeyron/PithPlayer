@@ -2039,6 +2039,7 @@ dependencies = [
  "glow 0.16.0",
  "pith-mpv",
  "pith-store",
+ "pith-subs",
  "rfd",
  "tempfile",
  "tracing",
@@ -2061,6 +2062,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
+name = "pith-subs"
+version = "5.0.0"
+dependencies = [
  "thiserror 2.0.19",
  "tracing",
 ]

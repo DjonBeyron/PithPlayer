@@ -6,6 +6,7 @@
 mod clipboard;
 mod import_v4;
 mod playback;
+mod search;
 mod subtitles;
 mod viewport;
 mod watching;
@@ -72,6 +73,8 @@ pub struct PithApp {
     tracks: Vec<pith_mpv::Track>,
     /// Какие дорожки выбраны сейчас.
     selected_tracks: subtitles::SelectedTracks,
+    /// Поиск по субтитрам.
+    search: search::SearchState,
 }
 
 impl PithApp {
@@ -128,6 +131,7 @@ impl PithApp {
             frame_time: 0.0,
             tracks: Vec::new(),
             selected_tracks: subtitles::SelectedTracks::default(),
+            search: search::SearchState::default(),
         };
 
         match Self::start_engine(cc, &options) {
@@ -300,8 +304,11 @@ impl PithApp {
             self.prepare_resume_offer();
             self.select_tracks_by_tags();
             self.refresh_tracks();
+            // Субтитры прошлого файла к новому отношения не имеют.
+            self.reset_search();
         }
 
+        self.poll_subtitle_extraction();
         self.refresh_subtitle_text();
         self.store_position_periodically();
 
@@ -399,6 +406,7 @@ impl eframe::App for PithApp {
 
         ui::show_subtitles(self, ui.ctx());
         ui::show_controls(self, ui.ctx());
+        ui::show_search(self, ui.ctx());
         ui::show_notice(self, ui.ctx());
         ui::show_migration_report(self, ui.ctx());
         ui::show_resume_offer(self, ui.ctx());

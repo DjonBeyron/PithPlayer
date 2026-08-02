@@ -10,6 +10,7 @@ mod metrics;
 mod migration;
 mod notice;
 mod resume;
+mod search;
 pub mod subtitles;
 mod timeline;
 
@@ -19,6 +20,7 @@ pub use menu::show_items as show_menu_items;
 pub use migration::show as show_migration_report;
 pub use notice::show as show_notice;
 pub use resume::show as show_resume_offer;
+pub use search::show as show_search;
 pub use subtitles::show as show_subtitles;
 pub use timeline::FragmentRange;
 

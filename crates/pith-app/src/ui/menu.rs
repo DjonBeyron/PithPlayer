@@ -26,6 +26,11 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
+    if ui.button("Поиск по субтитрам…").clicked() {
+        app.open_search();
+        ui.close();
+    }
+
     ui.separator();
 
     show_audio_tracks(app, ui);
