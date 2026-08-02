@@ -137,6 +137,21 @@ impl Engine {
         }
     }
 
+    /// Выбранная дорожка субтитров.
+    pub fn current_subtitle_track(&self) -> Option<i64> {
+        self.property_i64("sid")
+    }
+
+    /// Выбранная вторая дорожка субтитров.
+    pub fn current_secondary_subtitle_track(&self) -> Option<i64> {
+        self.property_i64("secondary-sid")
+    }
+
+    /// Выбранная аудиодорожка.
+    pub fn current_audio_track(&self) -> Option<i64> {
+        self.property_i64("aid")
+    }
+
     /// Текущая реплика основных субтитров.
     pub fn subtitle_text(&self) -> Option<String> {
         self.non_empty_property("sub-text")

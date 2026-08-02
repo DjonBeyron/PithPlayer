@@ -68,6 +68,10 @@ pub struct PithApp {
     notice: Option<Notice>,
     /// Время текущего кадра — по нему гаснут уведомления.
     frame_time: f64,
+    /// Дорожки текущего файла. Список меняется только при смене файла.
+    tracks: Vec<pith_mpv::Track>,
+    /// Какие дорожки выбраны сейчас.
+    selected_tracks: subtitles::SelectedTracks,
 }
 
 impl PithApp {
@@ -122,6 +126,8 @@ impl PithApp {
             subtitle_text: SubtitleText::default(),
             notice: None,
             frame_time: 0.0,
+            tracks: Vec::new(),
+            selected_tracks: subtitles::SelectedTracks::default(),
         };
 
         match Self::start_engine(cc, &options) {
@@ -293,6 +299,7 @@ impl PithApp {
             self.window_resized_by_user = false;
             self.prepare_resume_offer();
             self.select_tracks_by_tags();
+            self.refresh_tracks();
         }
 
         self.refresh_subtitle_text();
@@ -380,6 +387,7 @@ impl eframe::App for PithApp {
 
         ui::show_subtitles(self, ui.ctx());
         ui::show_controls(self, ui.ctx());
+        ui::show_context_menu(self, ui.ctx());
         ui::show_notice(self, ui.ctx());
         ui::show_migration_report(self, ui.ctx());
         ui::show_resume_offer(self, ui.ctx());

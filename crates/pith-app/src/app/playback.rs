@@ -71,6 +71,15 @@ impl PithApp {
         }
     }
 
+    /// Задаёт скорость воспроизведения.
+    pub fn set_speed(&mut self, speed: f64) {
+        if let Some(engine) = self.engine.as_mut()
+            && let Err(e) = engine.set_speed(speed)
+        {
+            tracing::warn!(error = %e, "не удалось задать скорость");
+        }
+    }
+
     /// Возвращает обычную скорость воспроизведения.
     pub fn reset_speed(&mut self) {
         if let Some(engine) = self.engine.as_mut()

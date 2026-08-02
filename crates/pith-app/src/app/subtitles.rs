@@ -27,7 +27,74 @@ impl SubtitleText {
     }
 }
 
+/// Какая дорожка выбрана сейчас.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SelectedTracks {
+    pub audio: Option<i64>,
+    pub subtitle: Option<i64>,
+    pub secondary_subtitle: Option<i64>,
+}
+
 impl PithApp {
+    /// Дорожки текущего файла.
+    pub fn tracks(&self) -> &[Track] {
+        &self.tracks
+    }
+
+    pub fn selected_tracks(&self) -> SelectedTracks {
+        self.selected_tracks
+    }
+
+    /// Перечитывает список дорожек и текущий выбор.
+    ///
+    /// Список меняется только при смене файла, поэтому держим его в кэше:
+    /// опрашивать mpv каждый кадр незачем.
+    pub(super) fn refresh_tracks(&mut self) {
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+
+        self.tracks = engine.tracks();
+        self.refresh_selected_tracks();
+    }
+
+    /// Обновляет отметки о выбранных дорожках.
+    pub(super) fn refresh_selected_tracks(&mut self) {
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+
+        self.selected_tracks = SelectedTracks {
+            audio: engine.current_audio_track(),
+            subtitle: engine.current_subtitle_track(),
+            secondary_subtitle: engine.current_secondary_subtitle_track(),
+        };
+    }
+
+    /// Включает дорожку субтитров вручную.
+    pub fn choose_subtitle_track(&mut self, id: Option<i64>) {
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_subtitle_track(id);
+        }
+        self.refresh_selected_tracks();
+    }
+
+    /// Включает вторую дорожку субтитров вручную.
+    pub fn choose_secondary_subtitle_track(&mut self, id: Option<i64>) {
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_secondary_subtitle_track(id);
+        }
+        self.refresh_selected_tracks();
+    }
+
+    /// Включает аудиодорожку вручную.
+    pub fn choose_audio_track(&mut self, id: Option<i64>) {
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_audio_track(id);
+        }
+        self.refresh_selected_tracks();
+    }
+
     /// Выбирает дорожки по тегам после загрузки файла.
     ///
     /// mpv отдаёт список сразу и достоверно, поэтому никаких повторных
