@@ -106,6 +106,12 @@ pub struct PithApp {
     bookmarks_panel: bool,
     /// Панель закреплена через меню и не прячется сама.
     bookmarks_panel_pinned: bool,
+    /// Сколько кадров панель ещё рисуется невидимой.
+    ///
+    /// Первый кадр egui считает разметку списка закладок и полосу прокрутки,
+    /// и при длинном списке видно, как панель достраивается. Показываем её,
+    /// когда размеры уже посчитаны.
+    bookmarks_panel_warmup: u8,
     /// Открытый диалог работы со списком отрезков.
     list_dialog: Option<ListDialog>,
     /// Открытый диалог общих настроек нарезки.
@@ -181,6 +187,7 @@ impl PithApp {
             bookmarks,
             bookmarks_panel: false,
             bookmarks_panel_pinned: false,
+            bookmarks_panel_warmup: 0,
             list_dialog: None,
             fragment_settings: None,
             file_types_prompt: None,

@@ -67,6 +67,12 @@ pub struct FragmentSettings {
     /// теряет качества. Включается, когда нужен старт строго по метке
     /// или целевая программа не принимает исходный кодек.
     pub reencode: bool,
+    /// Приводить звук к AAC, оставляя видео копией.
+    ///
+    /// Включено по умолчанию, как в v4: Premiere Pro и After Effects не
+    /// читают EAC3, DTS и подобные дорожки — файл открывается, но звука
+    /// в нём для монтажной программы нет. Видео при этом не перекодируется.
+    pub audio_aac: bool,
     /// Сколько фрагментов резать одновременно. Ноль — определить самим.
     pub parallel_jobs: usize,
 }
@@ -78,6 +84,7 @@ impl Default for FragmentSettings {
             duration_sec: 18,
             buffer_sec: 5,
             reencode: false,
+            audio_aac: true,
             parallel_jobs: 0,
         }
     }

@@ -20,6 +20,13 @@ pub struct FragmentJob {
     pub audio_index: Option<i64>,
     /// Перекодировать вместо перепаковки.
     pub reencode: bool,
+    /// Перекодировать звук в AAC, оставив видео копией.
+    ///
+    /// Premiere Pro и After Effects не читают EAC3, DTS и подобное:
+    /// файл открывается, но звуковой дорожки в нём для монтажной
+    /// программы нет. AAC понимают все. Видео при этом копируется
+    /// как обычно, скорость почти не страдает.
+    pub audio_aac: bool,
 }
 
 /// На сколько секунд отступать назад при перекодировании.
@@ -59,6 +66,11 @@ impl FragmentJob {
 
         if self.reencode {
             self.push_reencode_codecs(&mut args);
+        } else if self.audio_aac {
+            // Видео копируем, звук приводим к AAC ради монтажных программ.
+            for arg in ["-c:v", "copy", "-c:a", "aac", "-ac", "2", "-b:a", "320k"] {
+                args.push(arg.into());
+            }
         } else {
             args.push("-c".into());
             args.push("copy".into());
@@ -145,6 +157,7 @@ mod tests {
             duration: 18.0,
             audio_index: Some(1),
             reencode,
+            audio_aac: false,
         }
     }
 
@@ -260,6 +273,25 @@ mod tests {
     fn метки_времени_приводятся_к_нулю() {
         let args = задача(false).to_args();
         assert!(args.contains(&"make_zero".to_string()));
+    }
+
+    #[test]
+    fn звук_в_aac_оставляет_видео_копией() {
+        // Premiere и After Effects не видят дорожку EAC3 или DTS: файл
+        // открывается, а звука для монтажной программы в нём нет.
+        let mut job = задача(false);
+        job.audio_aac = true;
+        let args = job.to_args();
+
+        assert!(args.contains(&"-c:v".to_string()));
+        assert!(args.contains(&"aac".to_string()), "звук приводится к AAC");
+        assert!(
+            !args.contains(&"libx264".to_string()),
+            "видео перекодировать незачем"
+        );
+
+        let c = позиция(&args, "-c");
+        assert!(c.is_none(), "общего `-c copy` быть не должно");
     }
 
     #[test]

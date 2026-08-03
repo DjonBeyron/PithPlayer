@@ -5,6 +5,7 @@
 
 mod bookmarks;
 mod controls;
+mod extraction;
 mod file_types;
 mod fragment_settings;
 mod hotkeys;
@@ -20,6 +21,7 @@ mod timeline;
 
 pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
+pub use extraction::show as show_extraction_notice;
 pub use file_types::show as show_file_types_prompt;
 pub use fragment_settings::show as show_fragment_settings;
 pub use hotkeys::handle_hotkeys;

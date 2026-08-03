@@ -92,10 +92,30 @@ impl PithApp {
         let (sender, receiver) = channel();
         self.extraction.events = Some(receiver);
 
+        // Пауза на время нарезки. Несколько процессов FFmpeg занимают диск,
+        // и картинка всё равно перестаёт поспевать за звуком — пусть лучше
+        // воспроизведение честно стоит, чем идёт рывками.
+        self.pause_for_extraction();
+
         let workers = self.worker_count(total);
         tracing::info!(отрезков = total, потоков = workers, "начинаю нарезку");
 
         run_queue(jobs, workers, sender);
+    }
+
+    /// Останавливает воспроизведение перед нарезкой.
+    fn pause_for_extraction(&mut self) {
+        let Some(engine) = self.engine.as_mut() else {
+            return;
+        };
+
+        if engine.state().paused {
+            return;
+        }
+
+        if let Err(e) = engine.set_paused(true) {
+            tracing::warn!(error = %e, "не удалось поставить паузу перед нарезкой");
+        }
     }
 
     /// Сколько отрезков резать одновременно.
@@ -162,6 +182,7 @@ impl PithApp {
         let source = self.current_path.clone()?;
 
         let reencode = self.settings.fragments.reencode;
+        let audio_aac = self.settings.fragments.audio_aac;
         let audio_index = self.current_audio_index();
         let extension = self.container_for_current_file();
 
@@ -206,6 +227,7 @@ impl PithApp {
                     duration: f64::from(plan.list.duration_sec),
                     audio_index,
                     reencode,
+                    audio_aac,
                 });
             }
         }

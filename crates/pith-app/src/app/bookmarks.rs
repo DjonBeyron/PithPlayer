@@ -227,6 +227,30 @@ impl PithApp {
     pub fn toggle_bookmarks_panel(&mut self) {
         self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
         self.bookmarks_panel = false;
+
+        if self.bookmarks_panel_pinned {
+            self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
+        }
+    }
+
+    /// Насколько панель видна сейчас.
+    ///
+    /// Ноль на кадрах прогрева: панель рисуется целиком, но не показывается,
+    /// пока egui не посчитает размеры списка и полосы прокрутки.
+    pub fn bookmarks_panel_opacity(&self) -> f32 {
+        if self.bookmarks_panel_warmup > 0 {
+            0.0
+        } else {
+            1.0
+        }
+    }
+
+    /// Отмечает, что кадр прогрева пройден.
+    ///
+    /// Вызывается панелью после отрисовки: считать нужно только те кадры,
+    /// в которых разметка действительно считалась.
+    pub fn finish_panel_warmup_frame(&mut self) {
+        self.bookmarks_panel_warmup = self.bookmarks_panel_warmup.saturating_sub(1);
     }
 
     /// Показывает панель при наведении на правый край окна.
@@ -254,6 +278,10 @@ impl PithApp {
         let was_open = self.bookmarks_panel;
 
         if pointer.x >= screen.max.x - HOVER_ZONE_WIDTH {
+            if !self.bookmarks_panel {
+                // Панель только что вызвана — дадим ей кадр на разметку.
+                self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
+            }
             self.bookmarks_panel = true;
         } else if self.bookmarks_panel && pointer.x < screen.max.x - PANEL_KEEP_WIDTH {
             // Пока курсор над самой панелью, она остаётся на месте.
@@ -272,6 +300,12 @@ impl PithApp {
 
 /// Ширина полосы у правого края, вызывающей панель.
 const HOVER_ZONE_WIDTH: f32 = 40.0;
+
+/// Сколько кадров панель рисуется невидимой перед показом.
+///
+/// Двух достаточно: на первом egui считает размеры списка, на втором —
+/// положение полосы прокрутки, которое от этих размеров зависит.
+const PANEL_WARMUP_FRAMES: u8 = 2;
 
 /// До какой границы слева панель считается «под курсором».
 ///

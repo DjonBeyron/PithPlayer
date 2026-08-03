@@ -34,10 +34,15 @@ pub fn migrate_settings(v4_file: &Path, target: &mut Settings) -> bool {
         target.fragments.buffer_sec = value;
         changed = true;
     }
-    // `ReencodeAudioToAAC` сознательно не переносим. В v4 перекодирование
-    // было включено, потому что иначе фрагмент начинался с чёрных кадров.
-    // В v5 та же задача решена выравниванием по ключевому кадру, и режим
-    // по умолчанию — перепаковка (PLAN.md, решение 7).
+    // `ReencodeAudioToAAC` переносим. Сначала мы сочли, что в v4 он стоял
+    // ради чёрных кадров, и отбросили его, — это была ошибка: подсказка
+    // в форме v4 прямо говорит «рекомендуется для Premiere Pro, After
+    // Effects, Audition». Без него отрезок играется в плеере, но монтажная
+    // программа не видит в нём звуковой дорожки.
+    if let Some(value) = values.get("ReencodeAudioToAAC") {
+        target.fragments.audio_aac = value.eq_ignore_ascii_case("true");
+        changed = true;
+    }
 
     changed
 }

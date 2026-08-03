@@ -87,6 +87,24 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
             ui.separator();
             ui.add_space(8.0);
 
+            ui.checkbox(
+                &mut fields.audio_aac,
+                "Звук в AAC — для Premiere Pro и After Effects",
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Монтажные программы Adobe не читают EAC3, DTS и подобные дорожки: \
+                     отрезок открывается, но звука в нём для программы нет. AAC понимают \
+                     все. Видео при этом копируется без перекодирования.",
+                )
+                .color(theme::TEXT_DISABLED)
+                .small(),
+            );
+
+            ui.add_space(12.0);
+            ui.separator();
+            ui.add_space(8.0);
+
             ui.checkbox(&mut fields.reencode, "Перекодировать вместо перепаковки");
             ui.label(
                 egui::RichText::new(

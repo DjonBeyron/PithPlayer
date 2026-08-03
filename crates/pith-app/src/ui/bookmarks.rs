@@ -43,10 +43,16 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
         screen.min.y + PANEL_TOP,
     );
 
+    // Первые кадры панель рисуется целиком, но невидимой: egui считает
+    // размеры списка и полосы прокрутки, и при длинном списке иначе видно,
+    // как панель достраивается на глазах.
+    let opacity = app.bookmarks_panel_opacity();
+
     egui::Area::new(egui::Id::new("bookmarks_panel"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .show(ctx, |ui| {
+            ui.set_opacity(opacity);
             ui.set_width(PANEL_WIDTH);
 
             egui::Frame::NONE
@@ -58,6 +64,17 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                     show_body(app, ui, &mut actions);
                 });
         });
+
+    if opacity < 1.0 {
+        // Кадры прогрева должны пройти и на паузе, когда egui сам
+        // перерисовывать не станет.
+        app.finish_panel_warmup_frame();
+        ctx.request_repaint();
+
+        // Пока панель не показана, нажатия по ней не принимаем: щёлкнуть
+        // в невидимое пользователь не мог.
+        return;
+    }
 
     apply(app, actions);
 }

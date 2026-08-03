@@ -17,6 +17,7 @@ pub struct FragmentSettingsDialog {
     pub duration_sec: u32,
     pub buffer_sec: u32,
     pub reencode: bool,
+    pub audio_aac: bool,
 }
 
 impl PithApp {
@@ -38,6 +39,7 @@ impl PithApp {
             duration_sec: fragments.duration_sec,
             buffer_sec: fragments.buffer_sec,
             reencode: fragments.reencode,
+            audio_aac: fragments.audio_aac,
         });
     }
 
@@ -58,6 +60,7 @@ impl PithApp {
         fragments.duration_sec = duration_sec;
         fragments.buffer_sec = dialog.buffer_sec;
         fragments.reencode = dialog.reencode;
+        fragments.audio_aac = dialog.audio_aac;
 
         self.settings.save(&self.data_paths);
 
@@ -65,6 +68,7 @@ impl PithApp {
             длительность = duration_sec,
             отступ = dialog.buffer_sec,
             перекодирование = dialog.reencode,
+            звук_в_aac = dialog.audio_aac,
             "настройки нарезки сохранены"
         );
         self.show_notice("Настройки нарезки сохранены");
