@@ -19,9 +19,16 @@ const NARROW_WINDOW: f32 = 620.0;
 /// Отступ содержимого панели от краёв окна — одинаковый слева и справа.
 const SIDE_MARGIN: f32 = 12.0;
 /// Ширина кадра предпросмотра.
-const PREVIEW_WIDTH: f32 = 240.0;
+const PREVIEW_WIDTH: f32 = 160.0;
+/// Высота места под кадр.
+///
+/// Место занимается всегда, даже пока кадра нет: иначе окно меняет
+/// размер под каждый новый кадр и мигает под курсором.
+const PREVIEW_HEIGHT: f32 = 90.0;
+/// Отступ содержимого внутри окна предпросмотра.
+const PREVIEW_PADDING: i8 = 4;
 /// Насколько окно предпросмотра поднято над полосой.
-const PREVIEW_GAP: f32 = 12.0;
+const PREVIEW_GAP: f32 = 10.0;
 /// Через сколько секунд прятать панель в полноэкранном режиме.
 const HIDE_AFTER_SECONDS: f64 = 1.5;
 /// Высота полосы у нижнего края, которой панель вызывается обратно.
@@ -197,6 +204,16 @@ fn icon_button(ui: &mut egui::Ui, icon: icons::Icon, hint: &str) -> bool {
     .clicked()
 }
 
+/// Вписывает картинку в отведённое место, сохраняя пропорции.
+fn fit_inside(area: egui::Rect, image: egui::Vec2) -> egui::Rect {
+    if image.x <= 0.0 || image.y <= 0.0 {
+        return area;
+    }
+
+    let scale = (area.width() / image.x).min(area.height() / image.y);
+    egui::Rect::from_center_size(area.center(), image * scale)
+}
+
 fn show_time_label(app: &PithApp, ui: &mut egui::Ui) {
     let (position, duration) = app
         .engine()
@@ -267,20 +284,32 @@ fn show_preview(
         .show(ctx, |ui| {
             egui::Frame::NONE
                 .fill(theme::WINDOW_BG.gamma_multiply(0.96))
-                .inner_margin(6.0)
+                .inner_margin(PREVIEW_PADDING)
                 .corner_radius(4.0)
                 .show(ui, |ui| {
-                    ui.vertical_centered(|ui| {
-                        // Кадр появляется не мгновенно — FFmpeg нужно время.
-                        // Пока его нет, показываем хотя бы время.
-                        if let Some(frame) = app.preview_frame() {
-                            ui.add(
-                                egui::Image::new(&frame.texture)
-                                    .max_width(PREVIEW_WIDTH)
-                                    .corner_radius(3.0),
-                            );
-                        }
+                    // Размер задан жёстко: иначе окно пересчитывается под
+                    // каждое движение мыши, и подложка успевает мигнуть.
+                    ui.set_width(PREVIEW_WIDTH);
+                    ui.spacing_mut().item_spacing.y = 2.0;
 
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(PREVIEW_WIDTH, PREVIEW_HEIGHT),
+                        egui::Sense::hover(),
+                    );
+
+                    // Кадр появляется не мгновенно — FFmpeg нужно время.
+                    // Пока его нет, место под него уже занято, и окно
+                    // не прыгает, когда кадр приходит.
+                    if let Some(frame) = app.preview_frame() {
+                        egui::Image::new(&frame.texture)
+                            .corner_radius(3.0)
+                            // Вписываем по пропорциям: у широкого кадра
+                            // они не 16:9, и растянутая картинка врала бы
+                            // о том, что в этом месте фильма.
+                            .paint_at(ui, fit_inside(rect, frame.texture.size_vec2()));
+                    }
+
+                    ui.vertical_centered(|ui| {
                         ui.label(
                             egui::RichText::new(format!(
                                 "{} / {}",
@@ -288,7 +317,8 @@ fn show_preview(
                                 format_time(duration)
                             ))
                             .color(theme::TEXT_PRIMARY)
-                            .monospace(),
+                            .monospace()
+                            .size(12.0),
                         );
                     });
                 });
