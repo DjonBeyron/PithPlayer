@@ -22,6 +22,13 @@ const STEP: f64 = 1.5;
 /// и просить чаще — значит копить процессы, которые уже не нужны.
 const INTERVAL_MS: u128 = 150;
 
+/// Сколько мышь должна простоять на месте, прежде чем просить кадр.
+///
+/// Пока рука ведёт ползунок, чтение файла отдельным процессом мешает
+/// движку, и перемотка идёт рывками. Кадр нужен там, где пользователь
+/// остановился, — его и достаём.
+const SETTLE_MS: u128 = 180;
+
 /// Готовый кадр предпросмотра.
 pub struct PreviewFrame {
     /// Время, которому кадр соответствует.
@@ -39,6 +46,10 @@ pub struct PreviewState {
     requested: Option<f64>,
     /// Когда заказывали в последний раз.
     last_request: Option<Instant>,
+    /// Место, для которого кадр нужен, но запрос ещё не ушёл.
+    wanted: Option<f64>,
+    /// Когда это место было выбрано — от него отсчитывается пауза.
+    wanted_since: Option<Instant>,
     /// Ответ фонового потока: время и картинка в PNG.
     result: Option<Receiver<(f64, Vec<u8>)>>,
 }
@@ -49,16 +60,40 @@ impl PithApp {
         self.preview.frame.as_ref()
     }
 
-    /// Просит кадр для указанного времени.
+    /// Отмечает место, для которого нужен кадр.
     ///
-    /// Вызывается, пока пользователь тянет ползунок. Лишние запросы
-    /// отсекаются сами: и по времени, и по расстоянию до прошлого кадра.
+    /// Сам FFmpeg не запускается: пока мышь в движении, кадр всё равно
+    /// устареет раньше, чем будет готов, а чтение файла мешает mpv —
+    /// именно от этого перемотка «залипала» первые секунды. Запрос уходит,
+    /// когда рука остановилась (см. `poll_preview`).
     pub fn request_preview(&mut self, time: f64) {
+        if self.preview.wanted != Some(time) {
+            self.preview.wanted = Some(time);
+            self.preview.wanted_since = Some(Instant::now());
+        }
+    }
+
+    /// Запускает отложенный запрос, если мышь замерла.
+    fn send_pending_preview(&mut self) {
+        let (Some(time), Some(since)) = (self.preview.wanted, self.preview.wanted_since) else {
+            return;
+        };
+
+        if since.elapsed().as_millis() < SETTLE_MS {
+            return;
+        }
+
         let Some(path) = self.current_path.clone() else {
             return;
         };
 
         if !self.worth_requesting(time) {
+            return;
+        }
+
+        // Пока движок сам перематывает, диск занят им: свой процесс
+        // подождёт, иначе оба будут мешать друг другу.
+        if self.scrub_in_flight {
             return;
         }
 
@@ -80,10 +115,14 @@ impl PithApp {
         self.preview.frame = None;
         self.preview.requested = None;
         self.preview.result = None;
+        self.preview.wanted = None;
+        self.preview.wanted_since = None;
     }
 
     /// Забирает готовый кадр и делает из него текстуру.
     pub(super) fn poll_preview(&mut self, ctx: &egui::Context) {
+        self.send_pending_preview();
+
         let Some(receiver) = self.preview.result.as_ref() else {
             return;
         };

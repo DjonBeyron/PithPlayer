@@ -17,7 +17,9 @@ const WIDTH: u32 = 160;
 /// Возвращает изображение в формате PNG. `None` означает, что `ffmpeg`
 /// недоступен или кадра в этом месте нет.
 pub fn grab_frame(video: &Path, position: f64) -> Option<Vec<u8>> {
-    let output = crate::quiet::command("ffmpeg")
+    // Пониженный приоритет: кадр подсказки не должен отбирать процессор
+    // у воспроизведения.
+    let output = crate::quiet::background_command("ffmpeg")
         .args(["-v", "error"])
         // Декодируем только опорные кадры. Для подсказки этого довольно,
         // а на 4К HEVC вдвое быстрее: 220 мс против 400 на замере.

@@ -71,6 +71,7 @@ impl PithApp {
         // должен стоять под пальцем, а не прыгать назад.
         self.seek_target = Some(seconds);
         self.scrub_wanted = Some(seconds);
+        self.scrubbing = true;
 
         // На время перетаскивания останавливаем воспроизведение: иначе mpv
         // между перемотками успевает проиграть кусок, и кадр дёргается
@@ -136,6 +137,7 @@ impl PithApp {
     pub fn resume_after_scrub(&mut self) {
         self.scrub_wanted = None;
         self.scrub_sent = None;
+        self.scrubbing = false;
 
         if !self.paused_by_scrub {
             return;
@@ -165,7 +167,14 @@ impl PithApp {
     }
 
     /// Забывает желаемое место, когда mpv до него добрался.
+    ///
+    /// Во время перетаскивания позицию не спрашиваем — там всё решает
+    /// событие о завершении перемотки.
     pub(super) fn settle_seek_target(&mut self) {
+        if self.scrubbing {
+            return;
+        }
+
         let Some(target) = self.seek_target else {
             return;
         };

@@ -67,6 +67,8 @@ pub struct PithApp {
     scrub_sent: Option<f64>,
     /// Паузу поставили мы сами на время перетаскивания.
     paused_by_scrub: bool,
+    /// Пользователь тянет ползунок прямо сейчас.
+    scrubbing: bool,
     /// Полноэкранный режим.
     fullscreen: bool,
     /// Когда мышь двигалась последний раз — по этому прячется панель.
@@ -197,6 +199,7 @@ impl PithApp {
             scrub_in_flight: false,
             scrub_sent: None,
             paused_by_scrub: false,
+            scrubbing: false,
             fullscreen: false,
             last_pointer_activity: 0.0,
             fit_window_enabled: !args.no_fit_window,

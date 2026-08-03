@@ -167,7 +167,16 @@ impl PithApp {
     }
 
     /// Обновляет текущие реплики субтитров.
+    ///
+    /// Во время перемотки не спрашиваем вовсе: mpv перестраивает дорожку
+    /// субтитров после каждого прыжка, и запрос `sub-text` блокирует поток
+    /// интерфейса — замер показал 284 мс на кадр. Именно от этого
+    /// перетаскивание ползунка «залипало» первые секунды.
     pub(super) fn refresh_subtitle_text(&mut self) {
+        if self.scrubbing || self.scrub_in_flight || self.seek_target.is_some() {
+            return;
+        }
+
         let Some(engine) = self.engine.as_ref() else {
             return;
         };

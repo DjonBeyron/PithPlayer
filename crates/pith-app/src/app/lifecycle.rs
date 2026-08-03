@@ -112,6 +112,7 @@ impl PithApp {
 
         let mut file_loaded = false;
         let mut playback_failed = false;
+        let mut seek_done = false;
 
         for event in engine.pump_events() {
             match event {
@@ -132,12 +133,23 @@ impl PithApp {
                     file_loaded = true;
                 }
                 EngineEvent::EndFile => tracing::debug!("файл закончился"),
+                EngineEvent::SeekDone => seek_done = true,
                 EngineEvent::PlaybackError => playback_failed = true,
                 EngineEvent::Shutdown => tracing::info!("mpv завершает работу"),
             }
         }
 
-        engine.refresh_state();
+        // Пока идёт перетаскивание, свойства mpv не трогаем: он занят
+        // перемоткой, и каждый запрос ждёт её окончания — двести
+        // миллисекунд на кадр по замеру.
+        if !self.scrubbing {
+            engine.refresh_state();
+        }
+
+        if seek_done {
+            self.scrub_finished();
+        }
+
         self.settle_seek_target();
 
         if playback_failed {
