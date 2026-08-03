@@ -5,12 +5,6 @@
 
 use super::PithApp;
 
-/// Как часто отправлять перемотку, пока ползунок тянут, секунды.
-///
-/// Примерно пятнадцать раз в секунду: чаще mpv не успевает, и очередь
-/// команд начинает отставать от мыши.
-const SCRUB_INTERVAL: f64 = 0.065;
-
 /// Насколько близко к цели считается, что перемотка завершилась.
 const SEEK_SETTLED: f64 = 0.6;
 
@@ -68,24 +62,90 @@ impl PithApp {
 
     /// Перемотка во время перетаскивания ползунка.
     ///
-    /// Отличается от обычной двумя вещами: идёт по опорным кадрам и не
-    /// чаще, чем указано в `SCRUB_INTERVAL`. Иначе mpv получает по сотне
-    /// команд в секунду и отстаёт от мыши всё сильнее.
+    /// Команда уходит не по таймеру, а только когда mpv отработал прошлую.
+    /// По таймеру запросы копились в очереди: картинка показывала то, что
+    /// пользователь проехал секунду назад, и перемотка выглядела рваной.
+    /// Промежуточные положения мыши просто отбрасываются — важно последнее.
     pub fn scrub_to(&mut self, seconds: f64) {
         // Показываем желаемое место сразу: пока mpv догоняет, ползунок
         // должен стоять под пальцем, а не прыгать назад.
         self.seek_target = Some(seconds);
+        self.scrub_wanted = Some(seconds);
 
-        let now = self.frame_time;
-        if now - self.last_scrub_at < SCRUB_INTERVAL {
+        // На время перетаскивания останавливаем воспроизведение: иначе mpv
+        // между перемотками успевает проиграть кусок, и кадр дёргается
+        // сам по себе.
+        self.pause_for_scrub();
+        self.send_pending_scrub();
+    }
+
+    /// Отправляет отложенную перемотку, если движок освободился.
+    pub(super) fn send_pending_scrub(&mut self) {
+        if self.scrub_in_flight {
             return;
         }
-        self.last_scrub_at = now;
+
+        let Some(target) = self.scrub_wanted.take() else {
+            return;
+        };
+
+        // Мышь стоит на месте — движку там уже нечего делать.
+        if self.scrub_sent == Some(target) {
+            return;
+        }
+
+        let Some(engine) = self.engine.as_mut() else {
+            return;
+        };
+
+        self.scrub_in_flight = true;
+        self.scrub_sent = Some(target);
+
+        if let Err(e) = engine.seek_keyframe(target) {
+            tracing::warn!(error = %e, "быстрая перемотка не удалась");
+            self.scrub_in_flight = false;
+        }
+    }
+
+    /// Отмечает, что mpv закончил перемотку и готов к следующей.
+    pub(super) fn scrub_finished(&mut self) {
+        self.scrub_in_flight = false;
+        self.send_pending_scrub();
+    }
+
+    /// Ставит воспроизведение на паузу на время перетаскивания.
+    fn pause_for_scrub(&mut self) {
+        if self.paused_by_scrub {
+            return;
+        }
+
+        let Some(engine) = self.engine.as_mut() else {
+            return;
+        };
+
+        if engine.state().paused {
+            return;
+        }
+
+        if engine.set_paused(true).is_ok() {
+            self.paused_by_scrub = true;
+        }
+    }
+
+    /// Возвращает воспроизведение после перетаскивания.
+    pub fn resume_after_scrub(&mut self) {
+        self.scrub_wanted = None;
+        self.scrub_sent = None;
+
+        if !self.paused_by_scrub {
+            return;
+        }
+        self.paused_by_scrub = false;
 
         if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.seek_keyframe(seconds)
+            && let Err(e) = engine.set_paused(false)
         {
-            tracing::warn!(error = %e, "быстрая перемотка не удалась");
+            tracing::warn!(error = %e, "не удалось продолжить после перемотки");
         }
     }
 
@@ -112,11 +172,14 @@ impl PithApp {
 
         let Some(engine) = self.engine.as_ref() else {
             self.seek_target = None;
+            self.scrub_finished();
             return;
         };
 
         if (engine.state().position - target).abs() < SEEK_SETTLED {
             self.seek_target = None;
+            // Движок дошёл до места — можно отправлять следующее.
+            self.scrub_finished();
         }
     }
 

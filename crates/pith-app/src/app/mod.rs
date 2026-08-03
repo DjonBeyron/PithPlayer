@@ -59,8 +59,14 @@ pub struct PithApp {
     seek_pending: bool,
     /// Куда перематываем. Показывается вместо позиции mpv, пока он догоняет.
     seek_target: Option<f64>,
-    /// Когда последний раз отправляли перемотку при перетаскивании.
-    last_scrub_at: f64,
+    /// Куда нужно перемотать, когда движок освободится.
+    scrub_wanted: Option<f64>,
+    /// Перемотка отправлена и ещё не завершилась.
+    scrub_in_flight: bool,
+    /// Куда уже отправляли: не просим движок о том же месте дважды.
+    scrub_sent: Option<f64>,
+    /// Паузу поставили мы сами на время перетаскивания.
+    paused_by_scrub: bool,
     /// Полноэкранный режим.
     fullscreen: bool,
     /// Когда мышь двигалась последний раз — по этому прячется панель.
@@ -187,7 +193,10 @@ impl PithApp {
             restored_geometry_pending: settings.window.is_some(),
             seek_pending: false,
             seek_target: None,
-            last_scrub_at: 0.0,
+            scrub_wanted: None,
+            scrub_in_flight: false,
+            scrub_sent: None,
+            paused_by_scrub: false,
             fullscreen: false,
             last_pointer_activity: 0.0,
             fit_window_enabled: !args.no_fit_window,

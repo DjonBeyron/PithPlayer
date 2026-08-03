@@ -67,8 +67,8 @@ fn candidates() -> Vec<PathBuf> {
 pub fn install(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    let comfortaa = load_first(&candidates());
-    if let Some((path, data)) = &comfortaa {
+    let comfortaa = comfortaa_data();
+    if let Some((source, data)) = &comfortaa {
         fonts.font_data.insert(
             COMFORTAA.to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(data.clone())),
@@ -86,7 +86,7 @@ pub fn install(ctx: &egui::Context) {
             ],
         );
 
-        tracing::info!(?path, "Comfortaa подключена для вторых субтитров");
+        tracing::info!(source, "Comfortaa подключена для вторых субтитров");
     } else {
         tracing::info!("Comfortaa не найдена — вторые субтитры оставляю в обычном шрифте");
     }
@@ -118,6 +118,24 @@ fn load_first(paths: &[PathBuf]) -> Option<(PathBuf, Vec<u8>)> {
     paths
         .iter()
         .find_map(|path| std::fs::read(path).ok().map(|data| (path.clone(), data)))
+}
+
+/// Comfortaa: сначала из системы, иначе — встроенная копия.
+///
+/// Копия лежит в самой программе, поэтому вторые субтитры выглядят
+/// одинаково на любой машине, даже там, где шрифт не установлен.
+/// Системная версия предпочтительнее: пользователь мог поставить свою.
+///
+/// Шрифт распространяется по SIL Open Font License — вкладывать его
+/// в программу лицензия разрешает (assets/Comfortaa-OFL.txt).
+fn comfortaa_data() -> Option<(&'static str, Vec<u8>)> {
+    const BUILT_IN: &[u8] = include_bytes!("../assets/Comfortaa-Regular.ttf");
+
+    if let Some((_, data)) = load_first(&candidates()) {
+        return Some(("система", data));
+    }
+
+    Some(("встроенная копия", BUILT_IN.to_vec()))
 }
 
 /// Семейство для вторых субтитров.

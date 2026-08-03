@@ -225,24 +225,24 @@ fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
     let response = timeline::show(ui, position, duration, width, &fragments);
 
     match (response.dragging, response.seek_to) {
-        // Ведут ползунок: быстрая перемотка по опорным кадрам и кадр
-        // предпросмотра под курсором.
-        (true, Some(target)) => {
-            app.scrub_to(target);
-            app.request_preview(target);
-        }
-        // Отпустили или щёлкнули — доводим точно.
+        // Ведут ползунок: быстрая перемотка по опорным кадрам.
+        (true, Some(target)) => app.scrub_to(target),
+        // Отпустили или щёлкнули — доводим точно и возвращаем воспроизведение.
         (false, Some(target)) => {
+            app.resume_after_scrub();
             app.seek_absolute(target);
-            app.clear_preview();
         }
         _ => {}
     }
 
-    if response.dragging {
-        show_preview(app, ui.ctx(), &response, duration);
-    } else if response.hovered_time.is_none() {
-        app.clear_preview();
+    // Подсказка нужна и при простом наведении: посмотреть, что в этом
+    // месте фильма, часто хочется, не перематывая туда.
+    match response.hovered_time {
+        Some(time) => {
+            app.request_preview(time);
+            show_preview(app, ui.ctx(), &response, duration);
+        }
+        None => app.clear_preview(),
     }
 }
 
