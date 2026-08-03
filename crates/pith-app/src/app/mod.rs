@@ -17,6 +17,7 @@ mod import_v4;
 mod lifecycle;
 mod lists;
 mod playback;
+mod preview;
 mod search;
 mod subtitles;
 mod viewport;
@@ -56,6 +57,10 @@ pub struct PithApp {
     restored_geometry_pending: bool,
     /// Перемотка ожидает подтверждения — нужна для замера её длительности.
     seek_pending: bool,
+    /// Куда перематываем. Показывается вместо позиции mpv, пока он догоняет.
+    seek_target: Option<f64>,
+    /// Когда последний раз отправляли перемотку при перетаскивании.
+    last_scrub_at: f64,
     /// Полноэкранный режим.
     fullscreen: bool,
     /// Когда мышь двигалась последний раз — по этому прячется панель.
@@ -130,6 +135,8 @@ pub struct PithApp {
     extraction: extraction::ExtractionState,
     /// Обрезка чёрных полей.
     crop: crop::CropState,
+    /// Предпросмотр кадра при перемотке.
+    preview: preview::PreviewState,
 }
 
 impl PithApp {
@@ -179,6 +186,8 @@ impl PithApp {
             window_position_pending: settings.window.is_some(),
             restored_geometry_pending: settings.window.is_some(),
             seek_pending: false,
+            seek_target: None,
+            last_scrub_at: 0.0,
             fullscreen: false,
             last_pointer_activity: 0.0,
             fit_window_enabled: !args.no_fit_window,
@@ -212,6 +221,7 @@ impl PithApp {
             file_types_registered: None,
             extraction: extraction::ExtractionState::default(),
             crop: crop::CropState::default(),
+            preview: preview::PreviewState::default(),
         };
 
         // Проверка наличия FFmpeg запускает внешний процесс. Делаем это

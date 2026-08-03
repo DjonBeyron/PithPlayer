@@ -44,10 +44,19 @@ impl FragmentRange {
 /// Что пользователь сделал с полосой.
 #[derive(Default)]
 pub struct TimelineResponse {
-    /// Куда перемотать, секунды. Заполняется по отпусканию мыши.
+    /// Куда перемотать, секунды. Заполняется и во время перетаскивания.
     pub seek_to: Option<f64>,
-    /// Позиция под курсором — для всплывающей подсказки со временем.
+    /// Идёт ли перетаскивание прямо сейчас.
+    ///
+    /// Во время него перематываем по опорным кадрам — так картинка
+    /// поспевает за движением мыши даже на 4К.
+    pub dragging: bool,
+    /// Позиция под курсором — для окна предпросмотра.
     pub hovered_time: Option<f64>,
+    /// Где показывать предпросмотр: середина полосы под курсором.
+    pub pointer_x: Option<f32>,
+    /// Верх полосы — от него отсчитывается положение окна предпросмотра.
+    pub track_top: f32,
 }
 
 /// Рисует полосу перемотки и возвращает действия пользователя.
@@ -107,21 +116,31 @@ pub fn show(
         );
     }
 
-    // Время под курсором.
-    if let Some(pointer) = response.hover_pos() {
+    result.track_top = track.min.y;
+
+    // Положение курсора нужно и при наведении, и при перетаскивании:
+    // во втором случае мышь может уйти за пределы полосы, но тянуть
+    // ползунок пользователь продолжает.
+    let pointer = response
+        .interact_pointer_pos()
+        .or_else(|| response.hover_pos());
+
+    if let Some(pointer) = pointer {
         result.hovered_time = Some(time_at(pointer.x, track, duration));
+        result.pointer_x = Some(pointer.x.clamp(track.min.x, track.max.x));
     }
 
-    // Перемотка по отпусканию: на 4К перемотка за каждый пиксель движения
-    // сделала бы интерфейс неотзывчивым.
-    if response.drag_stopped() || response.clicked() {
-        let pointer = response
-            .interact_pointer_pos()
-            .or_else(|| response.hover_pos());
+    // Перематываем и во время перетаскивания: иначе ползунок «не берётся»
+    // — картинка меняется только после отпускания, и попасть в нужное
+    // место на ощупь невозможно.
+    result.dragging = response.dragged();
 
-        if let Some(pointer) = pointer {
-            result.seek_to = Some(time_at(pointer.x, track, duration));
-        }
+    let wants_seek = response.dragged() || response.drag_stopped() || response.clicked();
+
+    if let Some(pointer) = pointer
+        && wants_seek
+    {
+        result.seek_to = Some(time_at(pointer.x, track, duration));
     }
 
     result

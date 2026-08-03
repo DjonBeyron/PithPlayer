@@ -5,6 +5,15 @@
 
 use super::PithApp;
 
+/// Как часто отправлять перемотку, пока ползунок тянут, секунды.
+///
+/// Примерно пятнадцать раз в секунду: чаще mpv не успевает, и очередь
+/// команд начинает отставать от мыши.
+const SCRUB_INTERVAL: f64 = 0.065;
+
+/// Насколько близко к цели считается, что перемотка завершилась.
+const SEEK_SETTLED: f64 = 0.6;
+
 impl PithApp {
     /// Разбирает ошибку воспроизведения от mpv.
     ///
@@ -57,8 +66,64 @@ impl PithApp {
         }
     }
 
+    /// Перемотка во время перетаскивания ползунка.
+    ///
+    /// Отличается от обычной двумя вещами: идёт по опорным кадрам и не
+    /// чаще, чем указано в `SCRUB_INTERVAL`. Иначе mpv получает по сотне
+    /// команд в секунду и отстаёт от мыши всё сильнее.
+    pub fn scrub_to(&mut self, seconds: f64) {
+        // Показываем желаемое место сразу: пока mpv догоняет, ползунок
+        // должен стоять под пальцем, а не прыгать назад.
+        self.seek_target = Some(seconds);
+
+        let now = self.frame_time;
+        if now - self.last_scrub_at < SCRUB_INTERVAL {
+            return;
+        }
+        self.last_scrub_at = now;
+
+        if let Some(engine) = self.engine.as_mut()
+            && let Err(e) = engine.seek_keyframe(seconds)
+        {
+            tracing::warn!(error = %e, "быстрая перемотка не удалась");
+        }
+    }
+
+    /// Позиция, которую показывает интерфейс.
+    ///
+    /// Пока идёт перемотка, это желаемое место: mpv отвечает не сразу,
+    /// и без этого ползунок дёргался — прыгал назад и снова вперёд.
+    pub fn display_position(&self) -> f64 {
+        if let Some(target) = self.seek_target {
+            return target;
+        }
+
+        self.engine
+            .as_ref()
+            .map(|e| e.state().position)
+            .unwrap_or_default()
+    }
+
+    /// Забывает желаемое место, когда mpv до него добрался.
+    pub(super) fn settle_seek_target(&mut self) {
+        let Some(target) = self.seek_target else {
+            return;
+        };
+
+        let Some(engine) = self.engine.as_ref() else {
+            self.seek_target = None;
+            return;
+        };
+
+        if (engine.state().position - target).abs() < SEEK_SETTLED {
+            self.seek_target = None;
+        }
+    }
+
     /// Перемотка на абсолютную позицию.
     pub fn seek_absolute(&mut self, seconds: f64) {
+        self.seek_target = Some(seconds);
+
         let Some(engine) = self.engine.as_mut() else {
             return;
         };

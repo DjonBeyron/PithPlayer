@@ -9,6 +9,7 @@ mod error;
 mod options;
 mod render;
 mod tracks;
+mod video;
 
 pub use audio::{AUTO_DEVICE, AudioDevice};
 pub use engine::{Engine, EngineEvent, PlaybackState};

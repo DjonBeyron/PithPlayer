@@ -176,6 +176,21 @@ impl Engine {
             .map_err(|e| MpvError::command("seek", e))
     }
 
+    /// Быстрая перемотка по ближайшему опорному кадру.
+    ///
+    /// Нужна, пока пользователь тянет ползунок: точная перемотка
+    /// декодирует всё от опорного кадра до нужной миллисекунды, и на 4К
+    /// картинка отстаёт от мыши. По опорным кадрам она поспевает,
+    /// а точное место доводится по отпусканию.
+    pub fn seek_keyframe(&mut self, seconds: f64) -> Result<()> {
+        let target = seconds.max(0.0);
+        tracing::debug!(target, "быстрая перемотка");
+
+        self.mpv
+            .command("seek", &[&target.to_string(), "absolute+keyframes"])
+            .map_err(|e| MpvError::command("seek", e))
+    }
+
     /// Перемотка относительно текущей позиции.
     pub fn seek_relative(&mut self, delta_seconds: f64) -> Result<()> {
         tracing::debug!(delta_seconds, "перемотка относительно текущей");
@@ -268,25 +283,10 @@ impl Engine {
         }
     }
 
-    /// Читает размеры кадра после загрузки файла.
-    ///
-    /// Берём `dw`/`dh`, а не `w`/`h`: они уже учитывают поворот из метаданных.
-    /// Иначе вертикальное видео с телефона откроется лёжа (PLAN.md §6.12).
-    pub fn refresh_video_size(&mut self) {
-        let width = self.mpv.get_property::<i64>("video-params/dw").ok();
-        let height = self.mpv.get_property::<i64>("video-params/dh").ok();
-
-        match (width, height) {
-            (Some(w), Some(h)) if w > 0 && h > 0 => {
-                self.state.display_width = w;
-                self.state.display_height = h;
-                tracing::debug!(w, h, "размеры кадра получены");
-            }
-            _ => {
-                // Штатная ситуация: аудиофайл либо кадр ещё не готов.
-                tracing::debug!("размеры кадра недоступны — окно не трогаем");
-            }
-        }
+    /// Запоминает размеры кадра. Заполняется разбором свойств в `video.rs`.
+    pub(crate) fn set_display_size(&mut self, width: i64, height: i64) {
+        self.state.display_width = width;
+        self.state.display_height = height;
     }
 
     /// Останавливает воспроизведение и выгружает файл.
@@ -329,43 +329,6 @@ impl Engine {
         self.mpv
             .set_property(name, value)
             .map_err(|e| MpvError::command(name, e))
-    }
-
-    /// Обрезает кадр фильтром mpv и растягивает остаток на всё окно.
-    ///
-    /// `None` возвращает всё как было. Перекодирования не происходит:
-    /// mpv показывает часть кадра и масштабирует её.
-    ///
-    /// Одной обрезки мало. Убрав поля, мы получаем кадр другой формы —
-    /// у широкого фильма он оказывается уже окна, и поля возвращаются
-    /// с других сторон. Поэтому вместе с обрезкой включается `panscan`:
-    /// картинка увеличивается до полного заполнения окна.
-    pub fn set_video_crop(&mut self, filter: Option<&str>) -> Result<()> {
-        let value = filter.unwrap_or("");
-        self.set_property_string("vf", value)?;
-
-        let panscan = if filter.is_some() { "1.0" } else { "0.0" };
-        self.set_property_string("panscan", panscan)?;
-
-        tracing::info!(фильтр = value, panscan, "обрезка кадра изменена");
-        Ok(())
-    }
-
-    /// Размеры кадра исходника — по ним видно, что обрезать есть что.
-    pub fn source_size(&self) -> Option<(i64, i64)> {
-        let width = self.property_i64("video-params/w")?;
-        let height = self.property_i64("video-params/h")?;
-
-        (width > 0 && height > 0).then_some((width, height))
-    }
-
-    /// Фактически применённый режим аппаратного декодирования.
-    ///
-    /// Отличается от запрошенного, если mpv не смог включить нужный режим
-    /// и молча откатился. Без этой проверки замеры этапа 0 недостоверны.
-    pub fn active_hwdec(&self) -> String {
-        self.property_string("hwdec-current")
-            .unwrap_or_else(|_| "неизвестно".into())
     }
 }
 

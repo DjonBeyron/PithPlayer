@@ -138,6 +138,7 @@ impl PithApp {
         }
 
         engine.refresh_state();
+        self.settle_seek_target();
 
         if playback_failed {
             self.handle_playback_error();

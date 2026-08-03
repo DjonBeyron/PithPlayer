@@ -18,6 +18,10 @@ const MIN_TIMELINE_WIDTH: f32 = 120.0;
 const NARROW_WINDOW: f32 = 620.0;
 /// Отступ содержимого панели от краёв окна — одинаковый слева и справа.
 const SIDE_MARGIN: f32 = 12.0;
+/// Ширина кадра предпросмотра.
+const PREVIEW_WIDTH: f32 = 240.0;
+/// Насколько окно предпросмотра поднято над полосой.
+const PREVIEW_GAP: f32 = 12.0;
 /// Через сколько секунд прятать панель в полноэкранном режиме.
 const HIDE_AFTER_SECONDS: f64 = 1.5;
 /// Высота полосы у нижнего края, которой панель вызывается обратно.
@@ -31,6 +35,10 @@ pub fn show_controls(app: &mut PithApp, ctx: &egui::Context) {
     metrics::show(app, ctx);
 
     if !is_visible(app, ctx) {
+        // Вместе с панелью убираем и указатель: на весь экран он висит
+        // поверх картинки и мешает ровно так же, как и сама панель.
+        // Вернётся от первого же движения мышью.
+        ctx.set_cursor_icon(egui::CursorIcon::None);
         return;
     }
 
@@ -66,6 +74,9 @@ fn is_visible(app: &PithApp, ctx: &egui::Context) -> bool {
     if !app.is_fullscreen() {
         return true;
     }
+
+    // На паузе кадры сами не идут, и отсчёт до скрытия замер бы на месте.
+    ctx.request_repaint_after(std::time::Duration::from_millis(200));
 
     let screen = ctx.input(|i| i.viewport_rect());
 
@@ -204,18 +215,84 @@ fn show_time_label(app: &PithApp, ui: &mut egui::Ui) {
 }
 
 fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
-    let (position, duration) = app
-        .engine()
-        .map(|e| (e.state().position, e.state().duration))
-        .unwrap_or((0.0, 0.0));
+    let duration = app.engine().map(|e| e.state().duration).unwrap_or_default();
 
-    // Закладки появятся на этапе 4 — до тех пор жёлтых отрезков нет.
+    // Пока идёт перемотка, показываем желаемое место, а не то, до которого
+    // mpv уже добрался: иначе ползунок прыгает назад под пальцем.
+    let position = app.display_position();
+
     let fragments = app.fragment_ranges();
     let response = timeline::show(ui, position, duration, width, &fragments);
 
-    if let Some(target) = response.seek_to {
-        app.seek_absolute(target);
+    match (response.dragging, response.seek_to) {
+        // Ведут ползунок: быстрая перемотка по опорным кадрам и кадр
+        // предпросмотра под курсором.
+        (true, Some(target)) => {
+            app.scrub_to(target);
+            app.request_preview(target);
+        }
+        // Отпустили или щёлкнули — доводим точно.
+        (false, Some(target)) => {
+            app.seek_absolute(target);
+            app.clear_preview();
+        }
+        _ => {}
     }
+
+    if response.dragging {
+        show_preview(app, ui.ctx(), &response, duration);
+    } else if response.hovered_time.is_none() {
+        app.clear_preview();
+    }
+}
+
+/// Окно предпросмотра над полосой перемотки.
+fn show_preview(
+    app: &PithApp,
+    ctx: &egui::Context,
+    response: &timeline::TimelineResponse,
+    duration: f64,
+) {
+    let (Some(x), Some(time)) = (response.pointer_x, response.hovered_time) else {
+        return;
+    };
+
+    let position = egui::pos2(x, response.track_top - PREVIEW_GAP);
+
+    egui::Area::new(egui::Id::new("timeline_preview"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(position)
+        .pivot(egui::Align2::CENTER_BOTTOM)
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(theme::WINDOW_BG.gamma_multiply(0.96))
+                .inner_margin(6.0)
+                .corner_radius(4.0)
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        // Кадр появляется не мгновенно — FFmpeg нужно время.
+                        // Пока его нет, показываем хотя бы время.
+                        if let Some(frame) = app.preview_frame() {
+                            ui.add(
+                                egui::Image::new(&frame.texture)
+                                    .max_width(PREVIEW_WIDTH)
+                                    .corner_radius(3.0),
+                            );
+                        }
+
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} / {}",
+                                format_time(time),
+                                format_time(duration)
+                            ))
+                            .color(theme::TEXT_PRIMARY)
+                            .monospace(),
+                        );
+                    });
+                });
+        });
 }
 
 /// Скорость воспроизведения. Показывается, только когда отличается от обычной.

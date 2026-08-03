@@ -48,6 +48,7 @@ impl eframe::App for PithApp {
         // не начат и `input()` не отдаёт нажатия.
         ui::handle_hotkeys(self, ui.ctx());
 
+        self.poll_preview(ui.ctx());
         self.ensure_window_on_screen(ui.ctx());
         self.track_window_geometry(ui.ctx());
         self.track_manual_resize(ui.ctx());
