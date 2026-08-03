@@ -54,7 +54,7 @@ fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
     let mut action = None;
     let only_one = app.list_names().len() <= 1;
 
-    ui.menu_button("⚙", |ui| {
+    ui.menu_button(crate::ui::icons::SETTINGS.text(), |ui| {
         ui.set_min_width(180.0);
 
         if ui.button("Новый список…").clicked() {

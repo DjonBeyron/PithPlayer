@@ -5,12 +5,10 @@
 
 use crate::app::PithApp;
 use crate::theme;
-use crate::ui::{format_time, metrics, timeline};
+use crate::ui::{format_time, icons, metrics, timeline};
 
 /// Размер кнопок панели: одинаковый, чтобы строка не прыгала.
 const BUTTON_SIZE: [f32; 2] = [30.0, 24.0];
-/// Сторона иконки на кнопке открытия файла.
-const ICON_SIZE: f32 = 22.0;
 /// Ширина полосы громкости.
 const VOLUME_WIDTH: f32 = 110.0;
 /// Минимальная ширина полосы перемотки.
@@ -95,109 +93,47 @@ fn show_row(app: &mut PithApp, ui: &mut egui::Ui, inner_width: f32) {
     });
 }
 
-/// Кнопка открытия файла — иконкой приложения.
+/// Кнопка открытия файла.
 fn show_open_button(app: &mut PithApp, ui: &mut egui::Ui) {
-    let clicked = match crate::ui::logo_texture(ui.ctx()) {
-        Some(texture) => ui
-            .add(
-                egui::Button::image(
-                    egui::Image::new(&texture).fit_to_exact_size(egui::vec2(ICON_SIZE, ICON_SIZE)),
-                )
-                .frame(false),
-            )
-            .on_hover_text("Открыть файл")
-            .clicked(),
-        // Иконка не загрузилась — остаётся подпись, кнопка обязана работать.
-        None => ui
-            .add_sized(BUTTON_SIZE, egui::Button::new("Открыть"))
-            .on_hover_text("Открыть файл")
-            .clicked(),
-    };
-
-    if clicked {
+    if icon_button(ui, icons::OPEN, "Открыть файл") {
         app.open_file_dialog();
     }
 }
 
 /// Пауза и продолжение — одной кнопкой постоянного размера.
 ///
-/// Размер задан явно: у «▶» и «❚❚» разная ширина, и кнопка прыгала
-/// при каждой паузе.
+/// Размер задан явно: у значков воспроизведения и паузы разная ширина,
+/// и кнопка прыгала при каждом нажатии.
 fn show_play_button(app: &mut PithApp, ui: &mut egui::Ui) {
     let paused = app.engine().map(|e| e.state().paused).unwrap_or(true);
-    let label = if paused { "▶" } else { "❚❚" };
+    let icon = if paused { icons::PLAY } else { icons::PAUSE };
 
-    if ui
-        .add_sized(BUTTON_SIZE, egui::Button::new(label))
-        .on_hover_text("Пауза / продолжить (пробел)")
-        .clicked()
-    {
+    if icon_button(ui, icon, "Пауза / продолжить (пробел)") {
         app.toggle_pause();
     }
 }
 
 /// Кнопка полноэкранного режима.
-///
-/// Значок рисуется сам: подходящего знака в шрифтах egui нет, вместо
-/// иконки выходил пустой квадрат.
 fn show_fullscreen_button(app: &mut PithApp, ui: &mut egui::Ui) {
-    let hint = if app.is_fullscreen() {
-        "Выйти из полного экрана (F)"
+    let (icon, hint) = if app.is_fullscreen() {
+        (icons::RESTORE, "Выйти из полного экрана (F)")
     } else {
-        "Во весь экран (F)"
+        (icons::FULLSCREEN, "Во весь экран (F)")
     };
 
-    let (rect, response) = ui.allocate_exact_size(BUTTON_SIZE.into(), egui::Sense::click());
-
-    let color = if response.hovered() {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_SECONDARY
-    };
-
-    paint_fullscreen_icon(ui.painter(), rect, app.is_fullscreen(), color);
-
-    if response.on_hover_text(hint).clicked() {
+    if icon_button(ui, icon, hint) {
         app.toggle_fullscreen(ui.ctx());
     }
 }
 
-/// Рисует значок «во весь экран»: рамку с уголками.
-///
-/// В полноэкранном режиме уголки смотрят внутрь — это привычная подсказка
-/// «свернуть обратно».
-fn paint_fullscreen_icon(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    fullscreen: bool,
-    color: egui::Color32,
-) {
-    let side = ICON_SIZE * 0.6;
-    let frame = egui::Rect::from_center_size(rect.center(), egui::vec2(side, side * 0.75));
-    let stroke = egui::Stroke::new(1.4, color);
-    let arm = side * 0.28;
-
-    painter.rect_stroke(frame, 1.0, stroke, egui::StrokeKind::Middle);
-
-    // Уголки: наружу — «развернуть», внутрь — «свернуть».
-    let corners = [
-        (frame.left_top(), egui::vec2(1.0, 1.0)),
-        (frame.right_top(), egui::vec2(-1.0, 1.0)),
-        (frame.left_bottom(), egui::vec2(1.0, -1.0)),
-        (frame.right_bottom(), egui::vec2(-1.0, -1.0)),
-    ];
-
-    for (corner, inward) in corners {
-        let direction = if fullscreen { inward } else { -inward };
-        painter.line_segment(
-            [corner, corner + egui::vec2(direction.x * arm, 0.0)],
-            stroke,
-        );
-        painter.line_segment(
-            [corner, corner + egui::vec2(0.0, direction.y * arm)],
-            stroke,
-        );
-    }
+/// Кнопка со значком: одинаковый размер, без рамки поверх видео.
+fn icon_button(ui: &mut egui::Ui, icon: icons::Icon, hint: &str) -> bool {
+    ui.add_sized(
+        BUTTON_SIZE,
+        egui::Button::new(icon.text().color(theme::TEXT_PRIMARY)).frame(false),
+    )
+    .on_hover_text(hint)
+    .clicked()
 }
 
 fn show_time_label(app: &PithApp, ui: &mut egui::Ui) {
@@ -270,10 +206,13 @@ fn show_volume(app: &mut PithApp, ui: &mut egui::Ui) {
         app.set_volume(chosen);
     }
 
-    ui.label(
-        egui::RichText::new(if volume == 0 { "🔇" } else { "🔊" }).color(theme::TEXT_SECONDARY),
-    )
-    .on_hover_text(format!("Громкость: {volume}%"));
+    let icon = if volume == 0 {
+        icons::MUTE
+    } else {
+        icons::VOLUME
+    };
+    ui.label(icon.text().color(theme::TEXT_SECONDARY))
+        .on_hover_text(format!("Громкость: {volume}%"));
 }
 
 /// Предел громкости — тот же, что у движка.

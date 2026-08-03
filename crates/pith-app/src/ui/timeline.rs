@@ -166,11 +166,10 @@ pub fn volume_bar(ui: &mut egui::Ui, volume: i64, width: f32, max: i64) -> Optio
         ui.allocate_exact_size(egui::vec2(width, HIT_HEIGHT), egui::Sense::click_and_drag());
 
     let hovered = response.hovered() || response.dragged();
-    let track_height = if hovered {
-        TRACK_HEIGHT_HOVER
-    } else {
-        TRACK_HEIGHT
-    };
+
+    // Высота постоянная, в отличие от полосы перемотки: громкость стоит
+    // рядом с ней в одну линию, и утолщение под курсором ломало ряд.
+    let track_height = TRACK_HEIGHT;
 
     let track = egui::Rect::from_center_size(rect.center(), egui::vec2(width, track_height));
     let painter = ui.painter();

@@ -4,7 +4,7 @@
 
 use crate::app::PithApp;
 use crate::theme;
-use crate::ui::{format_time, lists};
+use crate::ui::{format_time, icons, lists};
 
 /// Ширина панели.
 const PANEL_WIDTH: f32 = 320.0;
@@ -173,14 +173,16 @@ fn show_row(
         ui.spacing_mut().item_spacing.x = 6.0;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Не «✕»: этого знака нет в шрифтах egui, кнопка выходила
-            // пустым квадратом.
-            if ui.small_button("🗑").on_hover_text("Убрать").clicked() {
+            if ui
+                .add(egui::Button::new(icons::DELETE.text()).frame(false))
+                .on_hover_text("Убрать")
+                .clicked()
+            {
                 actions.remove = Some(bookmark.time_ms);
             }
 
             if ui
-                .small_button("✏")
+                .add(egui::Button::new(icons::EDIT.text()).frame(false))
                 .on_hover_text("Переименовать")
                 .clicked()
             {
