@@ -7,6 +7,7 @@ mod app;
 mod associations;
 mod bench;
 mod cli;
+mod fonts;
 mod logging;
 mod single_instance;
 mod slow;
@@ -70,6 +71,7 @@ fn main() -> eframe::Result<()> {
         "Pith Player",
         options,
         Box::new(move |cc| {
+            fonts::install(&cc.egui_ctx);
             theme::apply(&cc.egui_ctx);
             Ok(Box::new(PithApp::new(cc, args, instance)))
         }),

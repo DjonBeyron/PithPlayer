@@ -68,16 +68,23 @@ fn show_layer(app: &mut PithApp, ctx: &egui::Context, layer: Layer, line: &str) 
                 .inner_margin(PADDING)
                 .corner_radius(4.0)
                 .show(ui, |ui| {
+                    // Вторые субтитры — другим шрифтом: их читают поверх
+                    // основных, и различать слои по начертанию проще, чем
+                    // по одному лишь положению.
+                    let mut text = egui::RichText::new(line)
+                        .size(layout.font_size)
+                        .color(theme::SUBTITLE_TEXT)
+                        .strong();
+
+                    if layer == Layer::Secondary {
+                        text = text.family(crate::fonts::secondary_subtitle_family());
+                    }
+
                     ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(line)
-                                .size(layout.font_size)
-                                .color(theme::SUBTITLE_TEXT)
-                                .strong(),
-                        )
-                        // Иначе при попытке потащить субтитры выделяется текст.
-                        .selectable(false)
-                        .sense(egui::Sense::click_and_drag()),
+                        egui::Label::new(text)
+                            // Иначе при попытке потащить субтитры выделяется текст.
+                            .selectable(false)
+                            .sense(egui::Sense::click_and_drag()),
                     )
                 })
                 .inner

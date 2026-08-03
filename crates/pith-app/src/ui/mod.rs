@@ -38,6 +38,40 @@ pub use timeline::FragmentRange;
 
 use crate::theme;
 
+/// Логотип для кнопки открытия файла.
+///
+/// Загружается один раз и живёт в памяти egui: иконка та же, что у окна
+/// и у самого файла программы, отдельного файла для неё не нужно.
+pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    const ICON: &[u8] = include_bytes!("../../assets/icon.ico");
+
+    ctx.memory_mut(|memory| {
+        memory
+            .data
+            .get_temp::<Option<egui::TextureHandle>>(egui::Id::new("logo"))
+    })
+    .unwrap_or_else(|| {
+        let handle = image::load_from_memory(ICON)
+            .inspect_err(|e| tracing::warn!(error = %e, "не удалось разобрать логотип"))
+            .ok()
+            .map(|image| {
+                let rgba = image.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+
+                ctx.load_texture("logo", pixels, egui::TextureOptions::LINEAR)
+            });
+
+        ctx.memory_mut(|memory| {
+            memory
+                .data
+                .insert_temp(egui::Id::new("logo"), handle.clone())
+        });
+
+        handle
+    })
+}
+
 /// Сообщение о невозможности запуска движка.
 pub fn show_fatal_error(ui: &mut egui::Ui, message: &str) {
     egui::CentralPanel::default()

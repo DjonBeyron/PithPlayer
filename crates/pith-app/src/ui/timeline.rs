@@ -155,6 +155,61 @@ fn paint_fragments(
     }
 }
 
+/// Полоса громкости — той же высоты и в том же стиле, что перемотка.
+///
+/// Стандартный ползунок egui выглядит рядом с ней чужеродно: другая
+/// высота, свой кружок, свои отступы.
+///
+/// Возвращает новое значение, когда пользователь его меняет.
+pub fn volume_bar(ui: &mut egui::Ui, volume: i64, width: f32, max: i64) -> Option<i64> {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, HIT_HEIGHT), egui::Sense::click_and_drag());
+
+    let hovered = response.hovered() || response.dragged();
+    let track_height = if hovered {
+        TRACK_HEIGHT_HOVER
+    } else {
+        TRACK_HEIGHT
+    };
+
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(width, track_height));
+    let painter = ui.painter();
+    let radius = track_height / 2.0;
+
+    painter.rect_filled(track, radius, theme::TIMELINE_TRACK);
+
+    let filled = (volume as f32 / max as f32).clamp(0.0, 1.0);
+    if filled > 0.0 {
+        let played =
+            egui::Rect::from_min_size(track.min, egui::vec2(track.width() * filled, track_height));
+        painter.rect_filled(played, radius, theme::ACCENT.gamma_multiply(0.75));
+    }
+
+    if hovered {
+        let knob_x = track.min.x + track.width() * filled;
+        painter.circle_filled(
+            egui::pos2(knob_x, track.center().y),
+            KNOB_RADIUS,
+            theme::TEXT_PRIMARY,
+        );
+    }
+
+    if !(response.dragged() || response.clicked()) {
+        return None;
+    }
+
+    let pointer = response
+        .interact_pointer_pos()
+        .or_else(|| response.hover_pos())?;
+
+    if track.width() <= 0.0 {
+        return None;
+    }
+
+    let ratio = ((pointer.x - track.min.x) / track.width()).clamp(0.0, 1.0);
+    Some((ratio * max as f32).round() as i64)
+}
+
 /// Время, соответствующее координате X на полосе.
 fn time_at(x: f32, track: egui::Rect, duration: f64) -> f64 {
     if track.width() <= 0.0 {
