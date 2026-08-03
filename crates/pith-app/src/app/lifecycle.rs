@@ -154,10 +154,13 @@ impl PithApp {
             self.refresh_tracks();
             // Субтитры прошлого файла к новому отношения не имеют.
             self.reset_search();
+            // У нового видео свои поля — прежняя обрезка к нему не подходит.
+            self.forget_crop();
         }
 
         self.poll_subtitle_extraction();
         self.poll_extraction();
+        self.poll_crop();
         self.refresh_subtitle_text();
         self.store_position_periodically();
 

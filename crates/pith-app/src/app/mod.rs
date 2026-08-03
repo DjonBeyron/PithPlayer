@@ -7,6 +7,7 @@ mod audio;
 mod bookmark_rename;
 mod bookmarks;
 mod clipboard;
+mod crop;
 mod extraction;
 mod extraction_queue;
 mod file_types;
@@ -125,6 +126,8 @@ pub struct PithApp {
     file_types_registered: Option<bool>,
     /// Ход нарезки.
     extraction: extraction::ExtractionState,
+    /// Обрезка чёрных полей.
+    crop: crop::CropState,
 }
 
 impl PithApp {
@@ -205,6 +208,7 @@ impl PithApp {
             file_types_prompt: None,
             file_types_registered: None,
             extraction: extraction::ExtractionState::default(),
+            crop: crop::CropState::default(),
         };
 
         // Проверка наличия FFmpeg запускает внешний процесс. Делаем это

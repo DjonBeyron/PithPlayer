@@ -331,6 +331,34 @@ impl Engine {
             .map_err(|e| MpvError::command(name, e))
     }
 
+    /// Обрезает кадр фильтром mpv и растягивает остаток на всё окно.
+    ///
+    /// `None` возвращает всё как было. Перекодирования не происходит:
+    /// mpv показывает часть кадра и масштабирует её.
+    ///
+    /// Одной обрезки мало. Убрав поля, мы получаем кадр другой формы —
+    /// у широкого фильма он оказывается уже окна, и поля возвращаются
+    /// с других сторон. Поэтому вместе с обрезкой включается `panscan`:
+    /// картинка увеличивается до полного заполнения окна.
+    pub fn set_video_crop(&mut self, filter: Option<&str>) -> Result<()> {
+        let value = filter.unwrap_or("");
+        self.set_property_string("vf", value)?;
+
+        let panscan = if filter.is_some() { "1.0" } else { "0.0" };
+        self.set_property_string("panscan", panscan)?;
+
+        tracing::info!(фильтр = value, panscan, "обрезка кадра изменена");
+        Ok(())
+    }
+
+    /// Размеры кадра исходника — по ним видно, что обрезать есть что.
+    pub fn source_size(&self) -> Option<(i64, i64)> {
+        let width = self.property_i64("video-params/w")?;
+        let height = self.property_i64("video-params/h")?;
+
+        (width > 0 && height > 0).then_some((width, height))
+    }
+
     /// Фактически применённый режим аппаратного декодирования.
     ///
     /// Отличается от запрошенного, если mpv не смог включить нужный режим

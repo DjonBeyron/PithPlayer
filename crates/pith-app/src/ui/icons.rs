@@ -92,3 +92,15 @@ pub const SETTINGS: Icon = Icon {
     glyph: "\u{E713}",
     fallback: "⚙",
 };
+
+/// Растянуть картинку, убрав чёрные поля.
+pub const FIT_SCREEN: Icon = Icon {
+    glyph: "\u{E799}",
+    fallback: "[↔]",
+};
+
+/// Вернуть поля на место.
+pub const FIT_ORIGINAL: Icon = Icon {
+    glyph: "\u{E7A0}",
+    fallback: "[=]",
+};

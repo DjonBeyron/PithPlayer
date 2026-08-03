@@ -18,8 +18,13 @@ const MIN_TIMELINE_WIDTH: f32 = 120.0;
 const NARROW_WINDOW: f32 = 620.0;
 /// Отступ содержимого панели от краёв окна — одинаковый слева и справа.
 const SIDE_MARGIN: f32 = 12.0;
-/// Через сколько секунд без движения мыши прятать панель.
-const HIDE_AFTER_SECONDS: f64 = 2.5;
+/// Через сколько секунд прятать панель в полноэкранном режиме.
+const HIDE_AFTER_SECONDS: f64 = 1.5;
+/// Высота полосы у нижнего края, которой панель вызывается обратно.
+///
+/// Считается от низа окна и чуть выше самой панели: иначе она мигала бы
+/// на своей же границе.
+const BOTTOM_ZONE: f32 = 90.0;
 
 /// Панель управления и панель замеров.
 pub fn show_controls(app: &mut PithApp, ctx: &egui::Context) {
@@ -54,13 +59,28 @@ pub fn show_controls(app: &mut PithApp, ctx: &egui::Context) {
 
 /// Показывать ли панель.
 ///
-/// В оконном режиме панель видна всегда. В полноэкранном прячется, если
-/// мышь не двигалась, — но не тогда, когда курсор над самой панелью.
+/// В оконном режиме панель видна всегда. На весь экран — включая режим
+/// с обрезанными полями — прячется через полторы секунды и возвращается,
+/// когда курсор опускается к нижнему краю.
 fn is_visible(app: &PithApp, ctx: &egui::Context) -> bool {
     if !app.is_fullscreen() {
         return true;
     }
 
+    let screen = ctx.input(|i| i.viewport_rect());
+
+    // Курсор у нижнего края — панель нужна прямо сейчас.
+    let at_bottom = ctx
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|pointer| pointer.y >= screen.max.y - BOTTOM_ZONE);
+
+    if at_bottom {
+        return true;
+    }
+
+    // Иначе даём ей полторы секунды после последнего движения мыши:
+    // сразу гасить панель, когда пользователь только что её вызвал,
+    // было бы неудобно.
     let idle = ctx.input(|i| i.time - app.last_pointer_activity());
     idle < HIDE_AFTER_SECONDS
 }
@@ -83,6 +103,7 @@ fn show_row(app: &mut PithApp, ui: &mut egui::Ui, inner_width: f32) {
             }
 
             show_fullscreen_button(app, ui);
+            show_crop_button(app, ui);
             show_speed(app, ui);
 
             // Полоса перемотки забирает всё, что осталось между краями.
@@ -123,6 +144,35 @@ fn show_fullscreen_button(app: &mut PithApp, ui: &mut egui::Ui) {
 
     if icon_button(ui, icon, hint) {
         app.toggle_fullscreen(ui.ctx());
+    }
+}
+
+/// Кнопка «растянуть на весь экран», убирающая чёрные поля.
+///
+/// Показывается только в полноэкранном режиме: в окне поля почти не
+/// мешают, а вот на большом экране им достаётся заметная часть площади.
+fn show_crop_button(app: &mut PithApp, ui: &mut egui::Ui) {
+    if !app.is_fullscreen() {
+        return;
+    }
+
+    if app.is_detecting_crop() {
+        ui.add_sized(BUTTON_SIZE, egui::Spinner::new())
+            .on_hover_text("Ищу чёрные поля…");
+        return;
+    }
+
+    let (icon, hint) = if app.is_cropped() {
+        (icons::FIT_ORIGINAL, "Вернуть чёрные поля")
+    } else {
+        (
+            icons::FIT_SCREEN,
+            "Растянуть на весь экран: FFmpeg найдёт чёрные поля и уберёт их",
+        )
+    };
+
+    if icon_button(ui, icon, hint) {
+        app.toggle_crop();
     }
 }
 
