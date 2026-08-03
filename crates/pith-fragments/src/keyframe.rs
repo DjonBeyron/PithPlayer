@@ -6,7 +6,6 @@
 //! Мы вместо этого встаём точно на ключевой кадр (PLAN.md §6.4).
 
 use std::path::Path;
-use std::process::Command;
 
 /// Насколько далеко назад искать ключевой кадр, секунды.
 ///
@@ -37,7 +36,7 @@ pub fn align_to_keyframes(video: &Path, times: &[f64]) -> Vec<Option<f64>> {
 
     let intervals = read_intervals(times);
 
-    let output = Command::new("ffprobe")
+    let output = crate::quiet::command("ffprobe")
         .args(["-v", "error"])
         // Только опорные кадры: остальные пропускаются при разборе.
         .args(["-skip_frame", "nokey"])

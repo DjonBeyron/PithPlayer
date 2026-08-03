@@ -7,6 +7,7 @@
 mod command;
 mod container;
 mod keyframe;
+mod quiet;
 mod runner;
 
 pub use command::{FragmentJob, format_time};

@@ -5,6 +5,7 @@
 
 mod extract;
 mod parse;
+mod quiet;
 mod search;
 
 pub use extract::{ExtractError, extract_track, is_ffmpeg_available, read_external};

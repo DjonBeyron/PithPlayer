@@ -1,7 +1,6 @@
 //! Запуск FFmpeg и подготовка имён файлов.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::command::FragmentJob;
 
@@ -17,7 +16,7 @@ pub fn run_job(job: &FragmentJob) -> ExtractionOutcome {
     let args = job.to_args();
     tracing::debug!(?args, "запускаю FFmpeg");
 
-    let output = match Command::new("ffmpeg").args(&args).output() {
+    let output = match crate::quiet::command("ffmpeg").args(&args).output() {
         Ok(output) => output,
         Err(e) => {
             return ExtractionOutcome::Failed {
@@ -125,7 +124,7 @@ pub fn is_ffmpeg_available() -> bool {
     static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
     *AVAILABLE.get_or_init(|| {
-        let found = Command::new("ffmpeg")
+        let found = crate::quiet::command("ffmpeg")
             .arg("-version")
             .output()
             .is_ok_and(|out| out.status.success());

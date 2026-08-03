@@ -6,7 +6,6 @@
 //! для поиска по всему файлу (PLAN.md §6.2).
 
 use std::path::Path;
-use std::process::Command;
 
 use crate::parse::{Cue, parse_srt};
 
@@ -30,7 +29,7 @@ pub enum ExtractError {
 /// `track_index` — порядковый номер среди дорожек субтитров (0, 1, 2…),
 /// а не идентификатор mpv.
 pub fn extract_track(video: &Path, track_index: i64) -> Result<Vec<Cue>, ExtractError> {
-    let output = Command::new(FFMPEG)
+    let output = crate::quiet::command(FFMPEG)
         .args(["-v", "error"])
         .arg("-i")
         .arg(video)
@@ -64,7 +63,7 @@ pub fn extract_track(video: &Path, track_index: i64) -> Result<Vec<Cue>, Extract
 /// одна испорченная реплика не лишила поиска весь файл.
 pub fn read_external(path: &Path) -> Result<Vec<Cue>, ExtractError> {
     // Через FFmpeg: он приводит ASS и VTT к SRT и разбирается с кодировками.
-    let output = Command::new(FFMPEG)
+    let output = crate::quiet::command(FFMPEG)
         .args(["-v", "error"])
         .arg("-i")
         .arg(path)
@@ -89,7 +88,7 @@ pub fn is_ffmpeg_available() -> bool {
     static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
     *AVAILABLE.get_or_init(|| {
-        Command::new(FFMPEG)
+        crate::quiet::command(FFMPEG)
             .arg("-version")
             .output()
             .is_ok_and(|out| out.status.success())
