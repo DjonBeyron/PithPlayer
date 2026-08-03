@@ -109,6 +109,49 @@ impl PithApp {
         }
     }
 
+    /// Ждёт ли подтверждения очистка списка.
+    ///
+    /// Возвращает имя списка и число закладок в нём — их видно в вопросе,
+    /// чтобы пользователь понимал, что именно потеряет.
+    pub fn clear_list_prompt(&self) -> Option<(String, usize)> {
+        if !self.clear_list_pending {
+            return None;
+        }
+
+        let list = self.current_bookmarks().and_then(VideoBookmarks::active)?;
+        Some((list.name.clone(), list.bookmarks.len()))
+    }
+
+    /// Спрашивает подтверждение на очистку активного списка.
+    pub fn ask_clear_list(&mut self) {
+        self.clear_list_pending = true;
+    }
+
+    pub fn cancel_clear_list(&mut self) {
+        self.clear_list_pending = false;
+    }
+
+    /// Убирает из активного списка все закладки, сам список оставляя.
+    ///
+    /// Действие необратимо, поэтому выполняется только по подтверждению.
+    pub fn confirm_clear_list(&mut self) {
+        self.clear_list_pending = false;
+
+        let Some(list) = self
+            .current_bookmarks_mut()
+            .and_then(VideoBookmarks::active_mut)
+        else {
+            return;
+        };
+
+        let removed = list.bookmarks.len();
+        list.bookmarks.clear();
+
+        self.bookmarks.save();
+        tracing::info!(закладок = removed, "список очищен");
+        self.show_notice(&format!("Убрано закладок: {removed}"));
+    }
+
     /// Удаляет активный список вместе с его закладками.
     pub fn delete_active_list(&mut self) {
         let Some(active) = self.active_list_name() else {

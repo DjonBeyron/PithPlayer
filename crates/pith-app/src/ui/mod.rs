@@ -28,6 +28,7 @@ pub use extraction::show as show_extraction_notice;
 pub use file_types::show as show_file_types_prompt;
 pub use fragment_settings::show as show_fragment_settings;
 pub use hotkeys::handle_hotkeys;
+pub use lists::show_clear_prompt as show_clear_list_prompt;
 pub use lists::show_dialog as show_list_dialog;
 pub use menu::show_items as show_menu_items;
 pub use migration::show as show_migration_report;

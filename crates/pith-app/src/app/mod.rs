@@ -118,6 +118,8 @@ pub struct PithApp {
     list_dialog: Option<ListDialog>,
     /// Открытое переименование закладки.
     bookmark_rename: Option<BookmarkRename>,
+    /// Ждёт подтверждения очистка списка закладок.
+    clear_list_pending: bool,
     /// Открытый диалог общих настроек нарезки.
     fragment_settings: Option<FragmentSettingsDialog>,
     /// Спрошенное подтверждение на смену файловых ассоциаций.
@@ -204,6 +206,7 @@ impl PithApp {
             bookmarks_panel_warmup: 0,
             list_dialog: None,
             bookmark_rename: None,
+            clear_list_pending: false,
             fragment_settings: None,
             file_types_prompt: None,
             file_types_registered: None,

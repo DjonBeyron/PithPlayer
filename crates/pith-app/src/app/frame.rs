@@ -114,6 +114,7 @@ impl PithApp {
         });
         ui::show_list_dialog(self, ctx);
         ui::show_bookmark_rename(self, ctx);
+        ui::show_clear_list_prompt(self, ctx);
         ui::show_fragment_settings(self, ctx);
         ui::show_file_types_prompt(self, ctx);
         ui::show_extraction_notice(self, ctx);

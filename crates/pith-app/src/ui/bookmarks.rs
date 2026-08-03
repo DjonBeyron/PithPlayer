@@ -27,6 +27,8 @@ struct PanelActions {
     move_to: Option<(i64, String)>,
     /// Какую закладку переименовать.
     rename: Option<i64>,
+    /// Спросить подтверждение на очистку списка.
+    clear: bool,
     extract_active: bool,
     extract_all: bool,
 }
@@ -273,13 +275,20 @@ fn show_actions(app: &PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
     let can_extract = app.can_extract();
 
     if active_count > 0 {
-        actions.extract_active |= ui
-            .add_enabled(
-                can_extract,
-                egui::Button::new(format!("Вырезать отрезки ({active_count})")),
-            )
-            .on_disabled_hover_text("Нужен ffmpeg.exe рядом с плеером")
-            .clicked();
+        ui.horizontal(|ui| {
+            actions.extract_active |= ui
+                .add_enabled(
+                    can_extract,
+                    egui::Button::new(format!("Вырезать отрезки ({active_count})")),
+                )
+                .on_disabled_hover_text("Нужен ffmpeg.exe рядом с плеером")
+                .clicked();
+
+            actions.clear |= ui
+                .button("Очистить")
+                .on_hover_text("Убрать все закладки этого списка")
+                .clicked();
+        });
     }
 
     // Все списки — только когда их больше одного: иначе кнопка повторяет
@@ -308,6 +317,9 @@ fn apply(app: &mut PithApp, actions: PanelActions) {
     }
     if let Some(time_ms) = actions.rename {
         app.open_bookmark_rename(time_ms);
+    }
+    if actions.clear {
+        app.ask_clear_list();
     }
     if actions.extract_active {
         app.start_extraction();

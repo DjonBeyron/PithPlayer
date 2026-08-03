@@ -188,6 +188,51 @@ pub fn show_dialog(app: &mut PithApp, ctx: &egui::Context) {
     }
 }
 
+/// Подтверждение очистки списка.
+///
+/// Отдельное окно, а не сразу действие: закладки собираются по ходу
+/// просмотра всего фильма, и вернуть их нечем.
+pub fn show_clear_prompt(app: &mut PithApp, ctx: &egui::Context) {
+    let Some((name, count)) = app.clear_list_prompt() else {
+        return;
+    };
+
+    let mut confirm = false;
+    let mut cancel = false;
+
+    egui::Window::new("Очистить список?")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            ui.set_width(DIALOG_WIDTH);
+
+            ui.label(
+                egui::RichText::new(format!(
+                    "Из списка «{name}» будут убраны все закладки: {count}. \
+                     Сам список останется, вырезанные отрезки не тронутся."
+                ))
+                .color(theme::TEXT_SECONDARY),
+            );
+
+            ui.add_space(14.0);
+            ui.horizontal(|ui| {
+                confirm |= ui.button("Очистить").clicked();
+                cancel |= ui.button("Отмена").clicked();
+            });
+        });
+
+    cancel |= ctx.input(|i| i.key_pressed(egui::Key::Escape));
+
+    // Enter не принимаем: потерять полсотни меток случайным нажатием
+    // было бы обидно.
+    if confirm {
+        app.confirm_clear_list();
+    } else if cancel {
+        app.cancel_clear_list();
+    }
+}
+
 /// Длительность фрагмента и отступ назад от метки.
 fn show_numbers(fields: &mut ListDialog, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
