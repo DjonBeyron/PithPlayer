@@ -18,6 +18,9 @@ mod window;
 use app::PithApp;
 use pith_store::DataPaths;
 
+/// Версия программы — её видно в заголовке окна и в правом верхнем углу.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() -> eframe::Result<()> {
     logging::init();
     logging::install_panic_hook();
@@ -42,14 +45,16 @@ fn main() -> eframe::Result<()> {
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "запуск Pith Player");
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Pith Player")
-            .with_inner_size([1280.0, 720.0])
-            // Минимум согласован с подгонкой окна под форму видео:
-            // уже этого панель управления не помещается (window.rs).
-            .with_min_inner_size([380.0, 260.0])
-            .with_icon(window_icon())
-            .with_transparent(false),
+        viewport: restore_geometry(
+            egui::ViewportBuilder::default()
+                .with_title(format!("Pith Player {}", env!("CARGO_PKG_VERSION")))
+                // Минимум согласован с подгонкой окна под форму видео:
+                // уже этого панель управления не помещается (window.rs).
+                .with_min_inner_size([380.0, 260.0])
+                .with_icon(window_icon())
+                .with_transparent(false),
+            &data_paths,
+        ),
         renderer: eframe::Renderer::Glow,
         // Завершаться сразу из цикла событий, а не возвращаться в main.
         //
@@ -72,6 +77,31 @@ fn main() -> eframe::Result<()> {
 
     single_instance::release(&data_paths);
     result
+}
+
+/// Возвращает окно туда, где его закрыли в прошлый раз.
+///
+/// Настройки читаются до создания приложения: положение окна задаётся
+/// при его создании, менять его потом — значит показать пользователю
+/// скачок. Битые или бессмысленные значения пропускаем, тогда окно
+/// откроется как обычно.
+fn restore_geometry(viewport: egui::ViewportBuilder, paths: &DataPaths) -> egui::ViewportBuilder {
+    /// Размер окна при первом запуске.
+    const DEFAULT_SIZE: [f32; 2] = [1280.0, 720.0];
+
+    let saved = pith_store::Settings::load(paths)
+        .window
+        .filter(pith_store::WindowGeometry::is_sane);
+
+    match saved {
+        Some(geometry) => {
+            tracing::info!(?geometry, "окно открывается там же, где было закрыто");
+            viewport
+                .with_position([geometry.x, geometry.y])
+                .with_inner_size([geometry.width, geometry.height])
+        }
+        None => viewport.with_inner_size(DEFAULT_SIZE),
+    }
 }
 
 /// Иконка окна и панели задач.

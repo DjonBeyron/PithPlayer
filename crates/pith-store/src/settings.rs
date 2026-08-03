@@ -51,6 +51,36 @@ impl SubtitleLayout {
     }
 }
 
+/// Положение и размер окна в точках экрана.
+///
+/// Координаты — от левого верхнего угла рабочего стола, поэтому окно
+/// на втором мониторе имеет `x` больше ширины основного экрана. Именно
+/// так плеер и запоминает, на каком экране его закрыли.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct WindowGeometry {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl WindowGeometry {
+    /// Разумны ли сохранённые размеры.
+    ///
+    /// Файл могли поправить руками, а окно нулевого размера открыть нельзя.
+    pub fn is_sane(&self) -> bool {
+        let finite = self.x.is_finite() && self.y.is_finite();
+        let sized = (MIN_SIDE..=MAX_SIDE).contains(&self.width)
+            && (MIN_SIDE..=MAX_SIDE).contains(&self.height);
+
+        finite && sized
+    }
+}
+
+/// Пределы правдоподобных размеров окна, точки.
+const MIN_SIDE: f32 = 200.0;
+const MAX_SIDE: f32 = 16384.0;
+
 /// Настройки нарезки отрезков (PLAN.md §6.4).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -110,6 +140,15 @@ pub struct Settings {
     /// Громкость, запоминается между запусками.
     pub volume: i64,
 
+    /// Показывать панель замеров производительности.
+    pub show_metrics: bool,
+
+    /// Где и какого размера было окно при прошлом закрытии.
+    ///
+    /// `None` — плеер ещё не закрывали; тогда окно открывается по центру
+    /// основного экрана с обычными размерами.
+    pub window: Option<WindowGeometry>,
+
     /// Устройство вывода звука (`audio-device` в mpv).
     ///
     /// `None` — выбирает mpv. Имя устройства привязано к системе, поэтому
@@ -130,6 +169,8 @@ impl Default for Settings {
             main_subtitle: SubtitleLayout::main(),
             secondary_subtitle: SubtitleLayout::secondary(),
             volume: 80,
+            show_metrics: true,
+            window: None,
             audio_device: None,
             fragments: FragmentSettings::default(),
         }

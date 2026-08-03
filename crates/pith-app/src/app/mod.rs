@@ -4,43 +4,36 @@
 //! размазано по семи partial-файлам `MainForm`.
 
 mod audio;
+mod bookmark_rename;
 mod bookmarks;
 mod clipboard;
 mod extraction;
+mod extraction_queue;
 mod file_types;
 mod fragment_settings;
 mod frame;
 mod import_v4;
+mod lifecycle;
 mod lists;
 mod playback;
 mod search;
 mod subtitles;
 mod viewport;
 mod watching;
+mod window_state;
 
 use std::path::PathBuf;
 
-use pith_mpv::{Engine, EngineEvent, EngineOptions, HwDec};
+use pith_mpv::{Engine, EngineOptions, HwDec};
 use pith_store::{DataPaths, Settings, WatchPositions};
 
 use crate::bench::Metrics;
 
+pub use bookmark_rename::BookmarkRename;
 use clipboard::Notice;
 pub use file_types::FileTypesPrompt;
 pub use fragment_settings::FragmentSettingsDialog;
 pub use lists::ListDialog;
-
-/// Локальный путь, которого нет на диске.
-///
-/// URL и потоки не проверяем: их существование определяет сам mpv.
-fn is_missing_local_file(path: &str) -> bool {
-    if path.contains("://") {
-        return false;
-    }
-
-    !std::path::Path::new(path).exists()
-}
-
 pub use subtitles::SubtitleText;
 pub use watching::ResumeOffer;
 
@@ -50,8 +43,16 @@ pub struct PithApp {
     fatal_error: Option<String>,
     pub metrics: Metrics,
     pub hwdec: HwDec,
-    /// Показывать ли панель замеров (этап 0).
-    pub show_metrics: bool,
+    /// Показывать ли панель замеров. Выбор запоминается между запусками.
+    show_metrics: bool,
+    /// Что сейчас написано в заголовке окна — чтобы не слать команду зря.
+    window_title: Option<String>,
+    /// Последнее известное положение окна — запоминается при закрытии.
+    window_geometry: Option<pith_store::WindowGeometry>,
+    /// Нужно проверить, что восстановленное окно видно на экране.
+    window_position_pending: bool,
+    /// Окно восстановлено из настроек, и первый файл его не переставляет.
+    restored_geometry_pending: bool,
     /// Перемотка ожидает подтверждения — нужна для замера её длительности.
     seek_pending: bool,
     /// Полноэкранный режим.
@@ -114,6 +115,8 @@ pub struct PithApp {
     bookmarks_panel_warmup: u8,
     /// Открытый диалог работы со списком отрезков.
     list_dialog: Option<ListDialog>,
+    /// Открытое переименование закладки.
+    bookmark_rename: Option<BookmarkRename>,
     /// Открытый диалог общих настроек нарезки.
     fragment_settings: Option<FragmentSettingsDialog>,
     /// Спрошенное подтверждение на смену файловых ассоциаций.
@@ -161,7 +164,15 @@ impl PithApp {
             fatal_error: None,
             metrics: Metrics::default(),
             hwdec,
-            show_metrics: !args.hide_metrics,
+            // Ключ командной строки перекрывает настройку: он нужен
+            // для замеров, где панель мешает снимкам.
+            show_metrics: settings.show_metrics && !args.hide_metrics,
+            window_title: None,
+            window_geometry: settings.window,
+            // Окно уже создано с сохранёнными координатами: проверим
+            // в первом же кадре, что оно попало на существующий экран.
+            window_position_pending: settings.window.is_some(),
+            restored_geometry_pending: settings.window.is_some(),
             seek_pending: false,
             fullscreen: false,
             last_pointer_activity: 0.0,
@@ -189,6 +200,7 @@ impl PithApp {
             bookmarks_panel_pinned: false,
             bookmarks_panel_warmup: 0,
             list_dialog: None,
+            bookmark_rename: None,
             fragment_settings: None,
             file_types_prompt: None,
             file_types_registered: None,
@@ -239,165 +251,15 @@ impl PithApp {
         self.engine.as_ref()
     }
 
-    /// Открывает файл и запускает замер времени до первого кадра.
-    ///
-    /// Отсутствующий файл отсекается сразу: mpv на него отвечает лишь
-    /// событием ошибки спустя время, и пользователь успевает решить,
-    /// что плеер завис.
-    pub fn open_file(&mut self, path: &str) {
-        if is_missing_local_file(path) {
-            tracing::warn!(path, "файла нет на диске");
-            self.report_playback_error("Файл не найден");
-            return;
-        }
-
-        self.playback_error = None;
-        self.set_current_path(path);
-
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        self.metrics.mark_open_start();
-
-        if let Err(e) = engine.load_file(path) {
-            tracing::error!(error = %e, "не удалось открыть файл");
-            self.report_playback_error("Не удалось открыть файл");
-        }
+    /// Видна ли панель замеров.
+    pub fn show_metrics(&self) -> bool {
+        self.show_metrics
     }
 
-    /// Перехватывает закрытие окна и освобождает движок до уничтожения окна.
-    ///
-    /// Возвращает `true`, если закрытие обработано и остальную работу
-    /// кадра делать не нужно.
-    ///
-    /// Пока mpv держит загруженный файл, уничтожение окна зависает.
-    /// Поэтому первое закрытие отменяем, освобождаем движок и просим
-    /// закрыться заново — на следующем кадре освобождать уже нечего
-    /// и окно закрывается штатно.
-    fn handle_close_request(&mut self, ctx: &egui::Context) -> bool {
-        if !ctx.input(|i| i.viewport().close_requested()) {
-            return false;
-        }
-
-        if self.engine.is_none() {
-            // Движок уже освобождён — не мешаем закрытию.
-            return true;
-        }
-
-        tracing::debug!("запрос на закрытие окна, освобождаю движок");
-        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-        self.shutdown_engine();
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        true
-    }
-
-    /// Останавливает воспроизведение и освобождает движок.
-    ///
-    /// Вызывается при закрытии окна. Повторный вызов безвреден.
-    fn shutdown_engine(&mut self) {
-        // Позицию сохраняем до остановки: после неё mpv уже не отдаст время.
-        self.store_position();
-
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        // Сначала останавливаем декодирование: иначе mpv ждёт отрисовки
-        // очередного кадра, а освобождение контекста ждёт mpv.
-        engine.stop();
-        tracing::info!(
-            ссылок_на_контекст = engine.render_context_refs(),
-            "воспроизведение остановлено"
-        );
-
-        // Drop разбирает поля по порядку: сначала контекст отрисовки, затем mpv.
-        self.engine = None;
-        tracing::info!("движок освобождён");
-    }
-
-    /// Открывает файлы, присланные другими запусками плеера.
-    ///
-    /// Берём последний: если пользователь быстро открыл несколько файлов,
-    /// он ждёт именно тот, что кликнул последним.
-    fn accept_files_from_other_instances(&mut self, ctx: &egui::Context) {
-        let Some(path) = self
-            .instance
-            .pending_files()
-            .into_iter()
-            .rfind(|p| crate::single_instance::is_openable(p))
-        else {
-            return;
-        };
-
-        self.open_file(&path.to_string_lossy());
-
-        // Поднимаем окно: пользователь только что кликнул по файлу.
-        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-    }
-
-    /// Разбор событий движка перед отрисовкой кадра.
-    fn process_engine_events(&mut self) {
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        let mut file_loaded = false;
-        let mut playback_failed = false;
-
-        for event in engine.pump_events() {
-            match event {
-                EngineEvent::FileLoaded => {
-                    engine.refresh_video_size();
-                    let active_hwdec = engine.active_hwdec();
-                    let audio = engine.audio_summary();
-                    let state = engine.state();
-                    tracing::info!(
-                        width = state.display_width,
-                        height = state.display_height,
-                        hwdec_active = %active_hwdec,
-                        // Звук в логе: разбор жалоб вида «стало играть в моно»
-                        // без него сводится к гаданию.
-                        звук = %audio,
-                        "файл загружен"
-                    );
-                    file_loaded = true;
-                }
-                EngineEvent::EndFile => tracing::debug!("файл закончился"),
-                EngineEvent::PlaybackError => playback_failed = true,
-                EngineEvent::Shutdown => tracing::info!("mpv завершает работу"),
-            }
-        }
-
-        engine.refresh_state();
-
-        if playback_failed {
-            self.handle_playback_error();
-        }
-
-        if file_loaded {
-            // Файл пошёл — прошлая жалоба больше не про него.
-            self.playback_error = None;
-            // Подгонять окно будем в кадре: там доступны размеры экрана.
-            self.fit_window_pending = true;
-            self.window_resized_by_user = false;
-            self.prepare_resume_offer();
-            self.select_tracks_by_tags();
-            self.refresh_tracks();
-            // Субтитры прошлого файла к новому отношения не имеют.
-            self.reset_search();
-        }
-
-        self.poll_subtitle_extraction();
-        self.poll_extraction();
-        self.refresh_subtitle_text();
-        self.store_position_periodically();
-
-        // Перемотка считается завершённой, когда mpv отдал новую позицию.
-        if self.seek_pending {
-            self.seek_pending = false;
-            self.metrics.mark_seek_done();
-        }
+    /// Прячет или возвращает панель замеров. Выбор запоминается.
+    pub fn toggle_metrics(&mut self) {
+        self.show_metrics = !self.show_metrics;
+        self.settings.show_metrics = self.show_metrics;
+        self.settings.save(&self.data_paths);
     }
 }

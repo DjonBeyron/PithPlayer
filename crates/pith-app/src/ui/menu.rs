@@ -72,6 +72,17 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
+    let metrics_label = if app.show_metrics() {
+        "Скрыть замеры"
+    } else {
+        "Показать замеры"
+    };
+
+    if ui.button(metrics_label).clicked() {
+        app.toggle_metrics();
+        ui.close();
+    }
+
     ui.separator();
 
     if ui.button("Настройки нарезки…").clicked() {

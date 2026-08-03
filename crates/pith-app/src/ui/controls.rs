@@ -7,8 +7,6 @@ use crate::app::PithApp;
 use crate::theme;
 use crate::ui::{format_time, metrics, timeline};
 
-/// Высота панели.
-const CONTROLS_HEIGHT: f32 = 56.0;
 /// Ширина кнопок, времени и отступов — без громкости.
 const BASE_CONTROLS_WIDTH: f32 = 300.0;
 /// Ширина регулятора громкости вместе со значком.
@@ -30,11 +28,13 @@ pub fn show_controls(app: &mut PithApp, ctx: &egui::Context) {
     }
 
     let screen = ctx.input(|i| i.viewport_rect());
-    let position = egui::pos2(screen.min.x, screen.max.y - CONTROLS_HEIGHT);
 
+    // Якорь к нижнему краю, а не расчёт положения по заданной высоте:
+    // содержимое занимает не ровно столько, сколько мы предполагали,
+    // и под панелью оставалась полоска видео.
     egui::Area::new(egui::Id::new("controls"))
         .order(egui::Order::Foreground)
-        .fixed_pos(position)
+        .anchor(egui::Align2::LEFT_BOTTOM, [0.0, 0.0])
         .show(ctx, |ui| {
             ui.set_width(screen.width());
 

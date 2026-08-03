@@ -26,6 +26,7 @@ impl eframe::App for PithApp {
 
     /// Страховка: если закрытие пришло мимо кадра egui, освобождаем здесь.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.remember_window_geometry();
         self.shutdown_engine();
     }
 
@@ -47,6 +48,8 @@ impl eframe::App for PithApp {
         // не начат и `input()` не отдаёт нажатия.
         ui::handle_hotkeys(self, ui.ctx());
 
+        self.ensure_window_on_screen(ui.ctx());
+        self.track_window_geometry(ui.ctx());
         self.track_manual_resize(ui.ctx());
         self.fit_window_to_video(ui.ctx());
         self.track_pointer_activity(ui.ctx());
@@ -61,6 +64,7 @@ impl eframe::App for PithApp {
         self.paint_overlays(ui.ctx());
         self.record_frame(ui.ctx(), frame_painted);
 
+        self.refresh_window_title(ui.ctx());
         probe.finish(&self.frame_hint());
     }
 }
@@ -109,6 +113,7 @@ impl PithApp {
             ui::show_bookmarks_panel(self, ctx)
         });
         ui::show_list_dialog(self, ctx);
+        ui::show_bookmark_rename(self, ctx);
         ui::show_fragment_settings(self, ctx);
         ui::show_file_types_prompt(self, ctx);
         ui::show_extraction_notice(self, ctx);
@@ -116,6 +121,24 @@ impl PithApp {
         ui::show_notice(self, ctx);
         ui::show_migration_report(self, ctx);
         ui::show_resume_offer(self, ctx);
+    }
+
+    /// Держит в заголовке окна название текущего видео.
+    ///
+    /// Заголовок — единственное место, где имя файла видно целиком:
+    /// поверх видео его не покажешь, не закрыв кадр.
+    fn refresh_window_title(&mut self, ctx: &egui::Context) {
+        let title = match self.current_video_name() {
+            Some(name) => format!("{name} — Pith Player {}", crate::VERSION),
+            None => format!("Pith Player {}", crate::VERSION),
+        };
+
+        if self.window_title.as_deref() == Some(title.as_str()) {
+            return;
+        }
+
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+        self.window_title = Some(title);
     }
 
     /// Что было на экране в этом кадре — подсказка для разбора заминок.

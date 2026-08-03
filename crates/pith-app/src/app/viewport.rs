@@ -40,6 +40,15 @@ impl PithApp {
             return;
         }
 
+        // Первый файл после запуска не трогает окно, восстановленное из
+        // настроек: пользователь закрыл плеер с этим размером и ждёт его же.
+        // Следующие файлы подгоняются как обычно.
+        if self.restored_geometry_pending {
+            self.restored_geometry_pending = false;
+            tracing::debug!("оставляю окно таким, каким его закрыли");
+            return;
+        }
+
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
@@ -58,7 +67,13 @@ impl PithApp {
         self.expected_window_size = Some(size);
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
 
-        // Центрируем на мониторе, если знаем его размер.
+        // Центрируем только при первом в жизни запуске. Дальше окно стоит
+        // там, куда его поставил пользователь: центрирование утаскивало
+        // плеер со второго монитора на основной при каждом открытии файла.
+        if self.window_geometry.is_some() {
+            return;
+        }
+
         if let Some(monitor) = monitor {
             let position = ((monitor - size) / 2.0).max(egui::Vec2::ZERO);
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position.to_pos2()));

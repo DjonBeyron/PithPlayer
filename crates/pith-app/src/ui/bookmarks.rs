@@ -15,6 +15,9 @@ const PANEL_TOP: f32 = 240.0;
 /// Отступ от правого края окна.
 const PANEL_MARGIN: f32 = 36.0;
 
+/// Ширина колонки со временем: столько занимает «0:00:00».
+const TIME_COLUMN: f32 = 52.0;
+
 /// Что пользователь сделал в панели за кадр.
 #[derive(Default)]
 struct PanelActions {
@@ -22,6 +25,8 @@ struct PanelActions {
     remove: Option<i64>,
     /// Перенос закладки: время метки и имя списка-приёмника.
     move_to: Option<(i64, String)>,
+    /// Какую закладку переименовать.
+    rename: Option<i64>,
     extract_active: bool,
     extract_all: bool,
 }
@@ -148,34 +153,73 @@ fn show_list(app: &PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
         .max_height(360.0)
         .show(ui, |ui| {
             for bookmark in &list.bookmarks {
-                ui.horizontal(|ui| {
-                    // Без названия подписью служит само время — второй раз
-                    // его показывать незачем.
-                    let label = match &bookmark.name {
-                        Some(name) => format!("{}  {name}", format_time(bookmark.seconds())),
-                        None => format_time(bookmark.seconds()),
-                    };
-
-                    let row = ui
-                        .selectable_label(false, label)
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                    if row.clicked() {
-                        actions.jump_to = Some(bookmark.seconds());
-                    }
-
-                    row.context_menu(|ui| {
-                        show_move_menu(ui, bookmark.time_ms, &others, actions);
-                    });
-
-                    // Не «✕»: этого знака нет в шрифтах egui, кнопка выходила
-                    // пустым квадратом.
-                    if ui.small_button("🗑").on_hover_text("Убрать").clicked() {
-                        actions.remove = Some(bookmark.time_ms);
-                    }
-                });
+                show_row(ui, bookmark, &others, actions);
             }
         });
+}
+
+/// Одна строка списка: время, название, кнопки.
+///
+/// Кнопки выкладываются справа налево первыми, поэтому стоят ровным
+/// столбцом независимо от длины реплики. Время — в колонке постоянной
+/// ширины, иначе названия начинались бы вразнобой.
+fn show_row(
+    ui: &mut egui::Ui,
+    bookmark: &pith_store::TimeBookmark,
+    others: &[String],
+    actions: &mut PanelActions,
+) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Не «✕»: этого знака нет в шрифтах egui, кнопка выходила
+            // пустым квадратом.
+            if ui.small_button("🗑").on_hover_text("Убрать").clicked() {
+                actions.remove = Some(bookmark.time_ms);
+            }
+
+            if ui
+                .small_button("✏")
+                .on_hover_text("Переименовать")
+                .clicked()
+            {
+                actions.rename = Some(bookmark.time_ms);
+            }
+
+            // Остаток строки — под время и название.
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(TIME_COLUMN, ui.available_height()),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.label(
+                            egui::RichText::new(format_time(bookmark.seconds()))
+                                .color(theme::TEXT_SECONDARY)
+                                .monospace(),
+                        );
+                    },
+                );
+
+                let title = bookmark.name.clone().unwrap_or_default();
+                let row = ui
+                    .add(
+                        egui::Label::new(egui::RichText::new(title).color(theme::TEXT_PRIMARY))
+                            .truncate()
+                            .sense(egui::Sense::click()),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                if row.clicked() {
+                    actions.jump_to = Some(bookmark.seconds());
+                }
+
+                row.context_menu(|ui| {
+                    show_move_menu(ui, bookmark.time_ms, others, actions);
+                });
+            });
+        });
+    });
 }
 
 fn show_empty(ui: &mut egui::Ui) {
@@ -259,6 +303,9 @@ fn apply(app: &mut PithApp, actions: PanelActions) {
     }
     if let Some((time_ms, target)) = actions.move_to {
         app.move_bookmark_to_list(time_ms, &target);
+    }
+    if let Some(time_ms) = actions.rename {
+        app.open_bookmark_rename(time_ms);
     }
     if actions.extract_active {
         app.start_extraction();

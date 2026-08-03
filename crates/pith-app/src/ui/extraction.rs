@@ -36,21 +36,27 @@ pub fn show(app: &PithApp, ctx: &egui::Context) {
                         );
                         ui.add_space(10.0);
 
+                        // Пока задачи готовятся, число отрезков ещё неизвестно:
+                        // их считает `ffprobe`, и на большом файле это секунды.
+                        let stage = if progress.is_preparing() {
+                            "Подготовка…".to_string()
+                        } else {
+                            format!("Готово {} из {}", progress.done, progress.total)
+                        };
+
                         ui.label(
-                            egui::RichText::new(format!(
-                                "Готово {} из {}",
-                                progress.done, progress.total
-                            ))
-                            .color(theme::TEXT_SECONDARY)
-                            .size(15.0),
+                            egui::RichText::new(stage)
+                                .color(theme::TEXT_SECONDARY)
+                                .size(15.0),
                         );
                         ui.add_space(10.0);
 
-                        ui.add(
-                            egui::ProgressBar::new(progress.fraction())
-                                .desired_width(WIDTH)
-                                .show_percentage(),
-                        );
+                        let bar = egui::ProgressBar::new(progress.fraction()).desired_width(WIDTH);
+                        ui.add(if progress.is_preparing() {
+                            bar.animate(true)
+                        } else {
+                            bar.show_percentage()
+                        });
                         ui.add_space(12.0);
 
                         ui.label(

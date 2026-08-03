@@ -20,6 +20,11 @@ impl PithApp {
             .map(|s| s.to_string_lossy().to_string())
     }
 
+    /// Название текущего видео — имя файла без расширения.
+    pub fn current_video_name(&self) -> Option<String> {
+        self.video_key()
+    }
+
     /// Открыт ли файл.
     ///
     /// Отдельная проверка от `current_bookmarks`: у только что открытого

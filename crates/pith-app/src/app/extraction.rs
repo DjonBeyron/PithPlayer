@@ -1,24 +1,17 @@
 //! Запуск нарезки отрезков и слежение за ходом работы.
 
-use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, channel};
 
-use pith_fragments::{ExtractionOutcome, FragmentJob};
-use pith_store::BookmarkList;
+use pith_fragments::ExtractionOutcome;
 
 use super::PithApp;
-
-/// Что и куда режем: один список закладок и его папка вывода.
-struct ListPlan {
-    list: BookmarkList,
-    dir: PathBuf,
-}
+use super::extraction_queue::{ExtractionEvent, ExtractionRequest, ListPlan, spawn};
 
 /// Ход нарезки.
 #[derive(Debug, Clone, Copy)]
 pub struct ExtractionProgress {
     pub done: usize,
+    /// Ноль означает, что задачи ещё готовятся.
     pub total: usize,
     pub failed: usize,
 }
@@ -30,13 +23,18 @@ impl ExtractionProgress {
         }
         self.done as f32 / self.total as f32
     }
+
+    /// Идёт ли ещё подготовка задач.
+    pub fn is_preparing(&self) -> bool {
+        self.total == 0
+    }
 }
 
 /// Состояние нарезки.
 #[derive(Default)]
 pub struct ExtractionState {
     progress: Option<ExtractionProgress>,
-    events: Option<Receiver<ExtractionOutcome>>,
+    events: Option<Receiver<ExtractionEvent>>,
 }
 
 impl PithApp {
@@ -68,39 +66,56 @@ impl PithApp {
         self.start_jobs(plans);
     }
 
+    /// Отдаёт работу фоновому потоку и сразу показывает сообщение.
+    ///
+    /// Подготовка задач зовёт `ffprobe` и занимает секунды на большом
+    /// файле — в потоке интерфейса это выглядело зависанием.
     fn start_jobs(&mut self, plans: Vec<ListPlan>) {
         if self.extraction.progress.is_some() {
             return;
         }
 
-        let Some(jobs) = self.build_jobs(plans) else {
+        let Some(source) = self.current_path.clone() else {
             return;
         };
 
-        if jobs.is_empty() {
+        let bookmarks: usize = plans.iter().map(|p| p.list.bookmarks.len()).sum();
+        if bookmarks == 0 {
             self.show_notice("Нет закладок для нарезки");
             return;
         }
-
-        let total = jobs.len();
-        self.extraction.progress = Some(ExtractionProgress {
-            done: 0,
-            total,
-            failed: 0,
-        });
-
-        let (sender, receiver) = channel();
-        self.extraction.events = Some(receiver);
 
         // Пауза на время нарезки. Несколько процессов FFmpeg занимают диск,
         // и картинка всё равно перестаёт поспевать за звуком — пусть лучше
         // воспроизведение честно стоит, чем идёт рывками.
         self.pause_for_extraction();
 
-        let workers = self.worker_count(total);
-        tracing::info!(отрезков = total, потоков = workers, "начинаю нарезку");
+        // Ноль в `total` означает «идёт подготовка»: сообщение появляется
+        // в том же кадре, в котором нажали кнопку.
+        self.extraction.progress = Some(ExtractionProgress {
+            done: 0,
+            total: 0,
+            failed: 0,
+        });
 
-        run_queue(jobs, workers, sender);
+        let (sender, receiver) = channel();
+        self.extraction.events = Some(receiver);
+
+        let workers = self.worker_count(bookmarks);
+        tracing::info!(закладок = bookmarks, потоков = workers, "готовлю нарезку");
+
+        spawn(
+            ExtractionRequest {
+                source,
+                plans,
+                reencode: self.settings.fragments.reencode,
+                audio_aac: self.settings.fragments.audio_aac,
+                audio_index: self.current_audio_index(),
+                extension: self.container_for_current_file(),
+                workers,
+            },
+            sender,
+        );
     }
 
     /// Останавливает воспроизведение перед нарезкой.
@@ -177,64 +192,6 @@ impl PithApp {
             .collect()
     }
 
-    /// Готовит задачи FFmpeg по списку закладок каждого набора.
-    fn build_jobs(&mut self, plans: Vec<ListPlan>) -> Option<Vec<FragmentJob>> {
-        let source = self.current_path.clone()?;
-
-        let reencode = self.settings.fragments.reencode;
-        let audio_aac = self.settings.fragments.audio_aac;
-        let audio_index = self.current_audio_index();
-        let extension = self.container_for_current_file();
-
-        let mut jobs = Vec::new();
-
-        for plan in plans {
-            if let Err(e) = std::fs::create_dir_all(&plan.dir) {
-                tracing::error!(error = %e, папка = ?plan.dir, "не удалось создать папку вывода");
-                self.show_notice("Не удалось создать папку для отрезков");
-                return None;
-            }
-
-            let requested: Vec<f64> = plan
-                .list
-                .bookmarks
-                .iter()
-                .map(|b| (b.seconds() - f64::from(plan.list.buffer_sec)).max(0.0))
-                .collect();
-
-            // Перепаковка режет по опорным кадрам: встаём точно на них,
-            // иначе отрезок начинается с чёрного экрана. Весь список
-            // выравнивается одним вызовом ffprobe (PLAN.md §6.4).
-            let starts: Vec<f64> = if reencode {
-                requested.clone()
-            } else {
-                pith_fragments::align_to_keyframes(&source, &requested)
-                    .into_iter()
-                    .zip(&requested)
-                    .map(|(aligned, requested)| aligned.unwrap_or(*requested))
-                    .collect()
-            };
-
-            for (bookmark, start) in plan.list.bookmarks.iter().zip(starts) {
-                jobs.push(FragmentJob {
-                    source: source.clone(),
-                    output: pith_fragments::unique_output_path(
-                        &plan.dir,
-                        &bookmark.label(),
-                        extension,
-                    ),
-                    start,
-                    duration: f64::from(plan.list.duration_sec),
-                    audio_index,
-                    reencode,
-                    audio_aac,
-                });
-            }
-        }
-
-        Some(jobs)
-    }
-
     /// Порядковый номер выбранной аудиодорожки среди аудио.
     ///
     /// FFmpeg считает дорожки внутри своего вида, а mpv выдаёт сквозные
@@ -261,73 +218,72 @@ impl PithApp {
         pith_fragments::choose_container(video.as_deref(), audio.as_deref())
     }
 
-    /// Забирает готовые результаты нарезки.
+    /// Забирает вести от фонового потока.
     pub(super) fn poll_extraction(&mut self) {
         let Some(receiver) = self.extraction.events.as_ref() else {
             return;
         };
 
-        let mut finished = Vec::new();
-        while let Ok(outcome) = receiver.try_recv() {
-            finished.push(outcome);
+        let mut events = Vec::new();
+        while let Ok(event) = receiver.try_recv() {
+            events.push(event);
         }
 
-        if finished.is_empty() {
+        if events.is_empty() {
             return;
         }
 
+        for event in events {
+            self.apply_extraction_event(event);
+        }
+
+        self.finish_extraction_if_done();
+    }
+
+    fn apply_extraction_event(&mut self, event: ExtractionEvent) {
         let Some(progress) = self.extraction.progress.as_mut() else {
             return;
         };
 
-        for outcome in finished {
-            match outcome {
-                ExtractionOutcome::Done { output, bytes } => {
-                    progress.done += 1;
-                    tracing::info!(?output, мегабайт = bytes / 1_048_576, "отрезок готов");
-                }
-                ExtractionOutcome::Failed { output, reason } => {
-                    progress.done += 1;
-                    progress.failed += 1;
-                    tracing::error!(?output, %reason, "отрезок не вырезан");
-                }
+        match event {
+            ExtractionEvent::Prepared { total } => {
+                progress.total = total;
+                tracing::info!(отрезков = total, "нарезка началась");
+            }
+            ExtractionEvent::Finished(ExtractionOutcome::Done { output, bytes }) => {
+                progress.done += 1;
+                tracing::info!(?output, мегабайт = bytes / 1_048_576, "отрезок готов");
+            }
+            ExtractionEvent::Finished(ExtractionOutcome::Failed { output, reason }) => {
+                progress.done += 1;
+                progress.failed += 1;
+                tracing::error!(?output, %reason, "отрезок не вырезан");
+            }
+            ExtractionEvent::DirectoryFailed => {
+                self.extraction.progress = None;
+                self.extraction.events = None;
+                self.show_notice("Не удалось создать папку для отрезков");
             }
         }
+    }
 
-        if progress.done >= progress.total {
-            let summary = summarize(*progress);
-            self.extraction.progress = None;
-            self.extraction.events = None;
-            self.show_notice(&summary);
+    fn finish_extraction_if_done(&mut self) {
+        let Some(progress) = self.extraction.progress else {
+            return;
+        };
+
+        if progress.is_preparing() || progress.done < progress.total {
+            return;
         }
+
+        self.extraction.progress = None;
+        self.extraction.events = None;
+        self.show_notice(&summarize(progress));
     }
 }
 
 /// Сколько процессов FFmpeg держать одновременно, если в настройках ноль.
 const DEFAULT_WORKERS: usize = 3;
-
-/// Раздаёт очередь задач нескольким потокам.
-///
-/// Очередь общая: кто освободился, тот берёт следующую. Так медленный
-/// отрезок не задерживает остальные, в отличие от деления пополам.
-fn run_queue(jobs: Vec<FragmentJob>, workers: usize, sender: Sender<ExtractionOutcome>) {
-    let queue = Arc::new(Mutex::new(jobs.into_iter()));
-
-    for _ in 0..workers {
-        let queue = Arc::clone(&queue);
-        let sender = sender.clone();
-
-        std::thread::spawn(move || {
-            // Замок держим только на время выдачи задачи, а не на нарезку.
-            while let Some(job) = queue.lock().ok().and_then(|mut q| q.next()) {
-                if sender.send(pith_fragments::run_job(&job)).is_err() {
-                    // Приложение закрылось — продолжать незачем.
-                    break;
-                }
-            }
-        });
-    }
-}
 
 fn summarize(progress: ExtractionProgress) -> String {
     if progress.failed == 0 {
