@@ -24,7 +24,8 @@ rfd = "0.15"
 # Буфер обмена для копирования реплик субтитров.
 arboard = "3"
 # Разбор .ico в пиксели: eframe принимает иконку окна только так.
-image = { version = "0.25", default-features = false, features = ["ico"] }
+# JPEG — мозаика миниатюр и кадры предпросмотра приходят в нём.
+image = { version = "0.25", default-features = false, features = ["ico", "jpeg"] }
 # Файловые ассоциации в HKCU: делаются по явному действию пользователя.
 winreg = "0.52"
 

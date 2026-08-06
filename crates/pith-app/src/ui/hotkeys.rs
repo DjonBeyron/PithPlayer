@@ -24,6 +24,8 @@ struct Actions {
     speed: f64,
     toggle_pause: bool,
     toggle_fullscreen: bool,
+    /// Escape: полный экран, но только если его не ждёт открытое окно.
+    escape: bool,
     reset_speed: bool,
     copy_subtitle: bool,
     toggle_subtitles: bool,
@@ -34,7 +36,18 @@ struct Actions {
 
 pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
     // Пока фокус в текстовом поле, клавиши принадлежат ему.
-    if ctx.egui_wants_keyboard_input() {
+    //
+    // Проверяется именно текстовое поле, а не фокус вообще: фокус остаётся
+    // и на нажатой кнопке панели, и с проверкой «занят ли фокус чем угодно»
+    // после щелчка по любой кнопке замолкали все горячие клавиши.
+    if ctx.text_edit_focused() {
+        return;
+    }
+
+    // Пока открыто окно поверх кадра, клавиши принадлежат ему. Иначе
+    // Escape закрывал окно и заодно переключал полный экран, а пробел
+    // ставил паузу вместо ответа диалогу.
+    if app.dialog_open() {
         return;
     }
 
@@ -43,7 +56,10 @@ pub fn handle_hotkeys(app: &mut PithApp, ctx: &egui::Context) {
     if actions.toggle_pause {
         app.toggle_pause();
     }
-    if actions.toggle_fullscreen {
+    // Escape отдаётся открытому окну: поиск, диалоги списков и настроек
+    // закрываются им же, и одно нажатие не должно заодно разворачивать
+    // плеер на весь экран.
+    if actions.toggle_fullscreen || (actions.escape && !app.escape_belongs_to_window()) {
         app.toggle_fullscreen(ctx);
     }
     if actions.seek != 0.0 {
@@ -101,7 +117,8 @@ fn collect_actions(i: &egui::InputState) -> Actions {
     for key in pressed_keys(i) {
         match key {
             Key::Space => actions.toggle_pause = true,
-            Key::Escape | Key::F => actions.toggle_fullscreen = true,
+            Key::Escape => actions.escape = true,
+            Key::F => actions.toggle_fullscreen = true,
             Key::Backspace => actions.reset_speed = true,
             Key::ArrowRight => actions.seek += step,
             Key::ArrowLeft => actions.seek -= step,

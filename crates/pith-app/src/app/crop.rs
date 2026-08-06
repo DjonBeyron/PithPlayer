@@ -52,7 +52,7 @@ impl PithApp {
             tracing::warn!(error = %e, "не удалось снять обрезку");
         }
 
-        self.show_notice("Поля возвращены");
+        self.show_notice(crate::tr!("Поля возвращены", "Black bars restored"));
     }
 
     /// Запускает поиск полей в фоне.
@@ -69,7 +69,10 @@ impl PithApp {
         };
 
         if !self.can_extract() {
-            self.show_notice("Нужен ffmpeg.exe рядом с плеером");
+            self.show_notice(crate::tr!(
+                "Нужен ffmpeg.exe рядом с плеером",
+                "ffmpeg.exe must sit next to the player"
+            ));
             return;
         }
 
@@ -82,7 +85,10 @@ impl PithApp {
         // Размеры исходника нужны поиску: по ним видно, вернулся кадр
         // целиком или в нём действительно нашлись поля.
         let Some(source) = self.engine.as_ref().and_then(pith_mpv::Engine::source_size) else {
-            self.show_notice("Размер кадра ещё неизвестен");
+            self.show_notice(crate::tr!(
+                "Размер кадра ещё неизвестен",
+                "Frame size is not known yet"
+            ));
             return;
         };
 
@@ -90,7 +96,7 @@ impl PithApp {
         self.crop.result = Some(receiver);
         self.crop.detecting = true;
 
-        self.show_notice("Ищу чёрные поля…");
+        self.show_notice(crate::tr!("Ищу чёрные поля…", "Looking for black bars…"));
 
         std::thread::spawn(move || {
             let found = pith_fragments::detect_crop(&path, position, source);
@@ -112,7 +118,7 @@ impl PithApp {
         self.crop.detecting = false;
 
         let Some(crop) = found else {
-            self.show_notice("Чёрных полей не нашлось");
+            self.show_notice(crate::tr!("Чёрных полей не нашлось", "No black bars found"));
             return;
         };
 
@@ -127,11 +133,17 @@ impl PithApp {
         match engine.set_video_crop(Some(&crop.to_filter())) {
             Ok(()) => {
                 self.crop.applied = Some(crop);
-                self.show_notice("Картинка растянута на весь экран");
+                self.show_notice(crate::tr!(
+                    "Картинка растянута на весь экран",
+                    "The picture now fills the screen"
+                ));
             }
             Err(e) => {
                 tracing::warn!(error = %e, "не удалось применить обрезку");
-                self.show_notice("Не удалось растянуть картинку");
+                self.show_notice(crate::tr!(
+                    "Не удалось растянуть картинку",
+                    "Could not fill the screen"
+                ));
             }
         }
     }

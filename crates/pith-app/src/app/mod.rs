@@ -13,12 +13,16 @@ mod extraction_queue;
 mod file_types;
 mod fragment_settings;
 mod frame;
+mod history;
 mod import_v4;
 mod lifecycle;
+mod list_dialog;
 mod lists;
 mod playback;
 mod preview;
+mod preview_source;
 mod search;
+mod subtitle_style;
 mod subtitles;
 mod viewport;
 mod watching;
@@ -115,6 +119,10 @@ pub struct PithApp {
     selected_tracks: subtitles::SelectedTracks,
     /// Поиск по субтитрам.
     search: search::SearchState,
+    /// Открыто ли окно настройки вида субтитров.
+    subtitle_style_open: bool,
+    /// Цвет или начертание меняли — их нужно записать в настройки.
+    subtitle_style_dirty: bool,
     /// Закладки и списки отрезков.
     bookmarks: pith_store::Bookmarks,
     /// Панель отрезков показана наведением на правый край.
@@ -145,6 +153,22 @@ pub struct PithApp {
     crop: crop::CropState,
     /// Предпросмотр кадра при перемотке.
     preview: preview::PreviewState,
+    /// Состояние, которое показывает значок в центре кадра.
+    badge_paused: bool,
+    /// Когда паузу переключали последний раз. `None` — ещё не трогали.
+    badge_started: Option<f64>,
+    /// Когда окно последний раз вернуло себе фокус.
+    focus_regained_at: Option<f64>,
+    /// Громкость меняли — её нужно запомнить в настройках.
+    volume_changed: bool,
+    /// До какого времени висит подсказка о перемотке клавишами.
+    seek_hud_until: Option<f64>,
+    /// История открытых файлов и папок.
+    history: pith_store::History,
+    /// Открыто ли окно истории.
+    history_open: bool,
+    /// Время кадра, в котором историю открыли.
+    history_opened_at: Option<f64>,
 }
 
 impl PithApp {
@@ -159,16 +183,23 @@ impl PithApp {
         let mut settings = Settings::load(&data_paths);
         let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());
 
+        // Язык поднимаем до первого кадра: иначе интерфейс успел бы
+        // мелькнуть по-русски у того, кто выбрал английский.
+        crate::i18n::set(settings.language);
+
         let hwdec = args.hwdec.unwrap_or_default();
         let options = EngineOptions {
             hwdec,
             volume: settings.volume,
+            muted: settings.muted,
+            looping: settings.looping,
             audio_languages: settings.audio_languages.clone(),
             subtitle_languages: settings.subtitle_priority.main_tags.clone(),
             audio_device: settings.audio_device.clone(),
         };
 
         let mut watch_positions = WatchPositions::load(data_paths.clone());
+        let history = pith_store::History::load(data_paths.clone());
 
         // Первый запуск: переносим данные версии 4.
         let migration = import_v4::run_once(
@@ -221,6 +252,8 @@ impl PithApp {
             tracks: Vec::new(),
             selected_tracks: subtitles::SelectedTracks::default(),
             search: search::SearchState::default(),
+            subtitle_style_open: false,
+            subtitle_style_dirty: false,
             bookmarks,
             bookmarks_panel: false,
             bookmarks_panel_pinned: false,
@@ -234,6 +267,14 @@ impl PithApp {
             extraction: extraction::ExtractionState::default(),
             crop: crop::CropState::default(),
             preview: preview::PreviewState::default(),
+            badge_paused: false,
+            badge_started: None,
+            focus_regained_at: None,
+            volume_changed: false,
+            seek_hud_until: None,
+            history,
+            history_open: false,
+            history_opened_at: None,
         };
 
         // Проверка наличия FFmpeg запускает внешний процесс. Делаем это
@@ -255,29 +296,58 @@ impl PithApp {
         app
     }
 
-    /// Запускает движок и подключает его к контексту OpenGL окна.
-    fn start_engine(
-        cc: &eframe::CreationContext<'_>,
-        options: &EngineOptions,
-    ) -> Result<Engine, String> {
-        let loader = cc.get_proc_address.clone().ok_or_else(|| {
-            "контекст OpenGL недоступен: eframe не отдал загрузчик функций".to_string()
-        })?;
-
-        let mut engine = Engine::new(options).map_err(|e| e.to_string())?;
-
-        // Пробуждаем интерфейс, когда mpv готов показать новый кадр.
-        // Внутри обратного вызова обращаться к mpv нельзя.
-        let egui_ctx = cc.egui_ctx.clone();
-        engine
-            .init_render_context(loader, move || egui_ctx.request_repaint())
-            .map_err(|e| e.to_string())?;
-
-        Ok(engine)
-    }
-
     pub fn engine(&self) -> Option<&Engine> {
         self.engine.as_ref()
+    }
+
+    /// Открыто ли окно, для которого Escape означает «закрыть».
+    ///
+    /// Пока такое окно на экране, Escape принадлежит ему. Иначе одно
+    /// нажатие делает два дела сразу: закрывает окно и заодно бросает
+    /// плеер в полноэкранный режим.
+    pub fn escape_belongs_to_window(&self) -> bool {
+        self.search.open
+            || self.list_dialog.is_some()
+            || self.bookmark_rename.is_some()
+            || self.clear_list_pending
+            || self.fragment_settings.is_some()
+            || self.file_types_prompt.is_some()
+            || self.subtitle_style_open
+    }
+
+    /// Открыто ли поверх кадра окно, которому принадлежат клавиши.
+    ///
+    /// Такие окна сами разбирают Escape и Enter, и горячие клавиши плеера
+    /// на это время замолкают: иначе Escape закрывал окно и одновременно
+    /// переключал полный экран.
+    pub fn dialog_open(&self) -> bool {
+        self.history_open
+            || self.search.open
+            || self.list_dialog.is_some()
+            || self.bookmark_rename.is_some()
+            || self.clear_list_pending
+            || self.fragment_settings.is_some()
+            || self.file_types_prompt.is_some()
+            || self.migration.is_some()
+            || self.subtitle_style_open
+    }
+
+    /// Язык интерфейса.
+    pub fn language(&self) -> pith_store::Language {
+        self.settings.language
+    }
+
+    /// Переключает язык интерфейса. Выбор запоминается.
+    pub fn set_language(&mut self, language: pith_store::Language) {
+        if self.settings.language == language {
+            return;
+        }
+
+        self.settings.language = language;
+        self.settings.save(&self.data_paths);
+        crate::i18n::set(language);
+
+        tracing::info!(?language, "язык интерфейса переключён");
     }
 
     /// Видна ли панель замеров.

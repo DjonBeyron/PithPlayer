@@ -58,10 +58,14 @@ impl FragmentJob {
         args.push("-map".into());
         args.push("0:v:0".into());
 
+        // Звук берём с вопросительным знаком: он означает «если есть».
+        // Без него FFmpeg на видео без звуковой дорожки не начинает работу
+        // вовсе — «Stream map matches no streams», и отрезок не вырезается.
+        // Такие файлы обычны: запись экрана, съёмка с камеры без микрофона.
         args.push("-map".into());
         match self.audio_index {
-            Some(index) => args.push(format!("0:a:{index}")),
-            None => args.push("0:a".into()),
+            Some(index) => args.push(format!("0:a:{index}?")),
+            None => args.push("0:a?".into()),
         }
 
         if self.reencode {
@@ -255,10 +259,15 @@ mod tests {
         assert!(!args.contains(&"0:v".to_string()));
     }
 
+    /// Знак вопроса в карте звука означает «если дорожка есть».
+    ///
+    /// Без него FFmpeg на видео без звука не начинает работу вовсе, и
+    /// отрезок не вырезается. А такие файлы обычны: запись экрана,
+    /// съёмка с камеры без микрофона.
     #[test]
     fn выбранная_аудиодорожка_попадает_в_отрезок() {
         let args = задача(false).to_args();
-        assert!(args.contains(&"0:a:1".to_string()));
+        assert!(args.contains(&"0:a:1?".to_string()), "{args:?}");
     }
 
     #[test]
@@ -266,7 +275,7 @@ mod tests {
         let mut job = задача(false);
         job.audio_index = None;
 
-        assert!(job.to_args().contains(&"0:a".to_string()));
+        assert!(job.to_args().contains(&"0:a?".to_string()));
     }
 
     #[test]

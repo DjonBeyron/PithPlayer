@@ -58,8 +58,11 @@ fn show_playback_error(app: &PithApp, ctx: &egui::Context) {
                 ui.label(
                     // Без стрелок и прочих знаков: в шрифтах egui их нет,
                     // на месте символа выходит пустой квадрат.
-                    egui::RichText::new("Правый щелчок по видео, затем «Открыть файл…»")
-                        .color(theme::TEXT_SECONDARY),
+                    egui::RichText::new(crate::tr!(
+                        "Правый щелчок по видео, затем «Открыть файл…»",
+                        "Right-click the video, then «Open file…»"
+                    ))
+                    .color(theme::TEXT_SECONDARY),
                 );
             });
         });

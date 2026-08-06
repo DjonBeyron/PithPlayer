@@ -59,22 +59,28 @@ impl PithApp {
     /// Запускает извлечение текущей дорожки субтитров в фоне.
     fn start_subtitle_extraction(&mut self) {
         let Some(path) = self.current_path.clone() else {
-            self.search.status = Some("Файл не открыт".into());
+            self.search.status = Some(crate::tr!("Файл не открыт", "No file open").into());
             return;
         };
 
         let Some(index) = self.current_subtitle_index() else {
-            self.search.status = Some("Субтитры не выбраны".into());
+            self.search.status =
+                Some(crate::tr!("Субтитры не выбраны", "No subtitle track selected").into());
             return;
         };
 
         if !pith_subs::is_ffmpeg_available() {
-            self.search.status =
-                Some("Для поиска нужен FFmpeg — положите ffmpeg.exe рядом с плеером".into());
+            self.search.status = Some(
+                crate::tr!(
+                    "Для поиска нужен FFmpeg — положите ffmpeg.exe рядом с плеером",
+                    "Search needs FFmpeg — put ffmpeg.exe next to the player"
+                )
+                .into(),
+            );
             return;
         }
 
-        self.search.status = Some("Читаю субтитры…".into());
+        self.search.status = Some(crate::tr!("Читаю субтитры…", "Reading subtitles…").into());
 
         let (sender, receiver) = channel();
         self.search.pending = Some(receiver);
@@ -112,7 +118,13 @@ impl PithApp {
         self.search.pending = None;
 
         if cues.is_empty() {
-            self.search.status = Some("Не удалось прочитать субтитры".into());
+            self.search.status = Some(
+                crate::tr!(
+                    "Не удалось прочитать субтитры",
+                    "Could not read the subtitles"
+                )
+                .into(),
+            );
             return;
         }
 

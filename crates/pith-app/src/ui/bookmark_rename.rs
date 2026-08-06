@@ -2,6 +2,7 @@
 
 use crate::app::PithApp;
 use crate::theme;
+use crate::tr;
 
 /// Ширина диалога.
 const WIDTH: f32 = 420.0;
@@ -14,7 +15,8 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     let mut apply = false;
     let mut cancel = false;
 
-    egui::Window::new("Название закладки")
+    egui::Window::new(tr!("Название закладки", "Bookmark name"))
+        .order(egui::Order::Foreground)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -28,7 +30,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
             let field = ui.add(
                 egui::TextEdit::singleline(&mut fields.name)
                     .desired_width(f32::INFINITY)
-                    .hint_text("Реплика из фильма"),
+                    .hint_text(tr!("Реплика из фильма", "A line from the film")),
             );
 
             if fields.focus_pending {
@@ -38,18 +40,20 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
             ui.add_space(6.0);
             ui.label(
-                egui::RichText::new(
+                egui::RichText::new(tr!(
                     "Название становится именем вырезанного файла. \
-                     Пустое поле вернёт подпись по времени.",
-                )
+                         Пустое поле вернёт подпись по времени.",
+                    "The name becomes the file name of the cut fragment. \
+                         Leave it empty to fall back to the timestamp.",
+                ))
                 .color(theme::TEXT_DISABLED)
                 .small(),
             );
 
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                apply |= ui.button("Сохранить").clicked();
-                cancel |= ui.button("Отмена").clicked();
+                apply |= ui.button(tr!("Сохранить", "Save")).clicked();
+                cancel |= ui.button(tr!("Отмена", "Cancel")).clicked();
             });
         });
 

@@ -8,6 +8,32 @@ use super::PithApp;
 /// Насколько близко к цели считается, что перемотка завершилась.
 const SEEK_SETTLED: f64 = 0.6;
 
+/// Сколько после возвращения фокуса нажатие по кадру не считается
+/// просьбой о паузе, секунды.
+const FOCUS_CLICK_GRACE: f64 = 0.3;
+
+/// Сколько подсказка о перемотке висит после последнего нажатия, секунды.
+///
+/// Пока стрелку жмут, отсчёт начинается заново, и подсказка не мигает
+/// между нажатиями.
+const SEEK_HUD_SECONDS: f64 = 1.2;
+
+/// Сколько живёт значок после возобновления, секунды.
+///
+/// На паузе он висит, пока пауза не снята: по нему сразу видно состояние.
+/// А вот после нажатия «играть» задерживаться ему незачем — разошёлся
+/// и погас.
+const BADGE_FADE: f64 = 0.6;
+
+/// Значок состояния в центре кадра.
+pub struct PlaybackBadge {
+    /// Плеер на паузе. Значок показывает то действие, которое случится
+    /// по нажатию: на паузе это воспроизведение.
+    pub paused: bool,
+    /// Сколько прошло с переключения, секунды — по нему идёт всплеск.
+    pub age: f64,
+}
+
 impl PithApp {
     /// Разбирает ошибку воспроизведения от mpv.
     ///
@@ -22,9 +48,9 @@ impl PithApp {
             .is_some_and(|path| !path.exists());
 
         let message = if missing {
-            "Файл пропал с диска"
+            crate::tr!("Файл пропал с диска", "The file is gone from disk")
         } else {
-            "Не удалось воспроизвести файл"
+            crate::tr!("Не удалось воспроизвести файл", "Could not play the file")
         };
 
         tracing::error!(файл = ?self.current_path, missing, "{message}");
@@ -46,18 +72,43 @@ impl PithApp {
     }
 
     /// Перемотка относительно текущей позиции с замером длительности.
+    ///
+    /// Перематывают обычно вслепую — стрелками, не глядя на панель.
+    /// Поэтому здесь же зажигается подсказка с новым временем.
     pub fn seek_relative(&mut self, seconds: f64) {
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
 
+        let state = engine.state();
+        let duration = state.duration;
+
+        // Считаем от желаемого места, а не от текущего: подряд идущие
+        // нажатия иначе показывали бы одно и то же — mpv не успевает.
+        let from = self.seek_target.unwrap_or(state.position);
+        let target = (from + seconds).clamp(0.0, duration.max(0.0));
+
         self.metrics.mark_seek_start();
         self.seek_pending = true;
+        self.seek_target = Some(target);
+        self.seek_hud_until = Some(self.frame_time + SEEK_HUD_SECONDS);
 
-        if let Err(e) = engine.seek_relative(seconds) {
+        if let Err(e) = engine.seek_absolute(target) {
             tracing::warn!(error = %e, "перемотка не удалась");
             self.seek_pending = false;
         }
+    }
+
+    /// Время для подсказки о перемотке. `None` — показывать нечего.
+    pub fn seek_hud(&self) -> Option<(f64, f64)> {
+        let until = self.seek_hud_until?;
+
+        if until <= self.frame_time {
+            return None;
+        }
+
+        let duration = self.engine()?.state().duration;
+        Some((self.display_position(), duration))
     }
 
     /// Перемотка во время перетаскивания ползунка.
@@ -209,12 +260,73 @@ impl PithApp {
         }
     }
 
+    /// Пауза или продолжение по действию пользователя.
+    ///
+    /// Каждое переключение показывает значок в центре кадра: в полном
+    /// экране панель управления спрятана, и по-другому увидеть, что
+    /// произошло, негде.
     pub fn toggle_pause(&mut self) {
-        if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.toggle_pause()
-        {
-            tracing::warn!(error = %e, "не удалось переключить паузу");
+        let paused = {
+            let Some(engine) = self.engine.as_mut() else {
+                return;
+            };
+
+            // Фильм доигран — играть заново. mpv держит последний кадр,
+            // и обычное «продолжить» ему нечего продолжать: нажатие
+            // выглядело так, будто плеер не отвечает.
+            if engine.state().finished {
+                if let Err(e) = engine.restart() {
+                    tracing::warn!(error = %e, "не удалось начать файл сначала");
+                    return;
+                }
+
+                tracing::debug!("файл доигран — начинаю сначала");
+                false
+            } else {
+                if let Err(e) = engine.toggle_pause() {
+                    tracing::warn!(error = %e, "не удалось переключить паузу");
+                    return;
+                }
+
+                engine.state().paused
+            }
+        };
+
+        self.badge_paused = paused;
+        self.badge_started = Some(self.frame_time);
+    }
+
+    /// Значок состояния для отрисовки в центре кадра.
+    ///
+    /// `None` — показывать нечего: либо паузу ещё не трогали, либо
+    /// всплеск после возобновления уже отыграл.
+    pub fn playback_badge(&self) -> Option<PlaybackBadge> {
+        let started = self.badge_started?;
+        let age = (self.frame_time - started).max(0.0);
+
+        if !self.badge_paused && age > BADGE_FADE {
+            return None;
         }
+
+        Some(PlaybackBadge {
+            paused: self.badge_paused,
+            age,
+        })
+    }
+
+    /// Сколько длится всплеск значка. Нужно отрисовке.
+    pub fn badge_fade_seconds() -> f64 {
+        BADGE_FADE
+    }
+
+    /// Окно только что вернуло себе фокус.
+    ///
+    /// Нажатие, которым плеер поднимают из другого приложения, доходит
+    /// и до кадра. Считать его просьбой поставить паузу нельзя: человек
+    /// возвращался к плееру, а не останавливал фильм.
+    pub(super) fn just_regained_focus(&self) -> bool {
+        self.focus_regained_at
+            .is_some_and(|at| self.frame_time - at < FOCUS_CLICK_GRACE)
     }
 
     pub fn adjust_volume(&mut self, delta: i64) {
@@ -224,6 +336,8 @@ impl PithApp {
                 tracing::warn!(error = %e, "не удалось изменить громкость");
             }
         }
+
+        self.volume_changed = true;
     }
 
     pub fn set_volume(&mut self, volume: i64) {
@@ -232,6 +346,9 @@ impl PithApp {
         {
             tracing::warn!(error = %e, "не удалось изменить громкость");
         }
+
+        // Запомнится, когда ползунок отпустят: см. `store_volume`.
+        self.volume_changed = true;
     }
 
     /// Меняет скорость на `delta` относительно текущей.
@@ -253,6 +370,28 @@ impl PithApp {
         }
     }
 
+    /// Повторяется ли файл по кругу.
+    pub fn is_looping(&self) -> bool {
+        self.engine
+            .as_ref()
+            .is_some_and(|engine| engine.state().looping)
+    }
+
+    /// Включает и выключает повтор файла. Выбор запоминается.
+    pub fn toggle_looping(&mut self) {
+        let looping = !self.is_looping();
+
+        if let Some(engine) = self.engine.as_mut()
+            && let Err(e) = engine.set_looping(looping)
+        {
+            tracing::warn!(error = %e, "не удалось переключить повтор");
+            return;
+        }
+
+        self.settings.looping = looping;
+        self.settings.save(&self.data_paths);
+    }
+
     /// Возвращает обычную скорость воспроизведения.
     pub fn reset_speed(&mut self) {
         if let Some(engine) = self.engine.as_mut()
@@ -264,18 +403,28 @@ impl PithApp {
 
     /// Диалог выбора файла.
     pub fn open_file_dialog(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
+        // Начинаем с папки последнего файла: обычно следующий лежит там же.
+        let mut dialog = self.file_dialog();
+
+        if let Some(dir) = self.history_dirs().first() {
+            dialog = dialog.set_directory(dir);
+        }
+
+        if let Some(path) = dialog.pick_file() {
+            self.open_file(&path.to_string_lossy());
+        }
+    }
+
+    /// Диалог с общими для плеера фильтрами.
+    pub(super) fn file_dialog(&self) -> rfd::FileDialog {
+        rfd::FileDialog::new()
             .add_filter(
-                "Видео и аудио",
+                crate::tr!("Видео и аудио", "Video and audio"),
                 &[
                     "mkv", "mp4", "avi", "mov", "webm", "ts", "m2ts", "m4v", "flv", "wmv", "mpg",
                     "mpeg", "vob", "ogv", "3gp", "mp3", "flac", "wav", "aac", "m4a", "opus",
                 ],
             )
-            .add_filter("Все файлы", &["*"])
-            .pick_file()
-        {
-            self.open_file(&path.to_string_lossy());
-        }
+            .add_filter(crate::tr!("Все файлы", "All files"), &["*"])
     }
 }

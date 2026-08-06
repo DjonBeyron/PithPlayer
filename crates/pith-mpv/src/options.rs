@@ -57,6 +57,10 @@ pub struct EngineOptions {
     pub hwdec: HwDec,
     /// Стартовая громкость, 0–100.
     pub volume: i64,
+    /// Начинать с выключенным звуком.
+    pub muted: bool,
+    /// Повторять файл по кругу.
+    pub looping: bool,
     /// Языки аудио по убыванию приоритета (опция `alang`).
     pub audio_languages: Vec<String>,
     /// Языки субтитров по убыванию приоритета (опция `slang`).
@@ -70,6 +74,8 @@ impl Default for EngineOptions {
         Self {
             hwdec: HwDec::default(),
             volume: 80,
+            muted: false,
+            looping: false,
             audio_languages: vec!["eng".into(), "en".into()],
             subtitle_languages: vec!["eng".into(), "en".into()],
             audio_device: None,
@@ -112,6 +118,11 @@ impl EngineOptions {
             // Не закрывать файл по достижении конца: нужно показать последний
             // кадр и дать пользователю решить, что дальше.
             ("keep-open", "yes".into()),
+            // Замедление и ускорение не меняют тональность: mpv растягивает
+            // звук по времени, а не по высоте (фильтр scaletempo2). Иначе
+            // на 0.5× голоса звучат басом, и разбирать речь труднее, чем
+            // на обычной скорости.
+            ("audio-pitch-correction", "yes".into()),
             // ===== Качество и плавность =====
             ("profile", "gpu-hq".into()),
             ("cache", "yes".into()),
@@ -134,8 +145,20 @@ impl EngineOptions {
             ("sub-visibility", "no".into()),
             ("secondary-sub-visibility", "no".into()),
             // ===== Звук =====
+            // Замедленная речь должна звучать как речь, а не как гудение:
+            // mpv растягивает звук по времени, не трогая высоту тона
+            // (фильтр scaletempo2). Задаём явно — значение по умолчанию
+            // зависит от версии mpv.
+            ("audio-pitch-correction", "yes".into()),
             ("volume", self.volume.to_string()),
             ("volume-max", "150".into()),
+            // Выключенный звук переживает перезапуск: пользователь выключил
+            // его намеренно, и включать самим — значит громко удивить.
+            ("mute", if self.muted { "yes" } else { "no" }.into()),
+            // Повтор тоже переживает перезапуск: его включают под задачу
+            // — разобрать кусок по кругу, — и она не заканчивается
+            // с закрытием плеера.
+            ("loop-file", if self.looping { "inf" } else { "no" }.into()),
         ];
 
         // Устройство задаётся до запуска: иначе звук успевает пойти

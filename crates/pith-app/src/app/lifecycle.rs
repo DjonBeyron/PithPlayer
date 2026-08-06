@@ -1,6 +1,6 @@
 //! Жизненный цикл: открытие файлов, события движка, закрытие окна.
 
-use pith_mpv::EngineEvent;
+use pith_mpv::{Engine, EngineEvent, EngineOptions};
 
 use super::PithApp;
 
@@ -13,12 +13,15 @@ impl PithApp {
     pub fn open_file(&mut self, path: &str) {
         if is_missing_local_file(path) {
             tracing::warn!(path, "файла нет на диске");
-            self.report_playback_error("Файл не найден");
+            self.report_playback_error(crate::tr!("Файл не найден", "File not found"));
             return;
         }
 
         self.playback_error = None;
         self.set_current_path(path);
+        self.remember_in_history(path);
+        // Мозаика миниатюр и второй экземпляр mpv были про прошлый файл.
+        self.reset_preview();
 
         let Some(engine) = self.engine.as_mut() else {
             return;
@@ -28,7 +31,10 @@ impl PithApp {
 
         if let Err(e) = engine.load_file(path) {
             tracing::error!(error = %e, "не удалось открыть файл");
-            self.report_playback_error("Не удалось открыть файл");
+            self.report_playback_error(crate::tr!(
+                "Не удалось открыть файл",
+                "Could not open the file"
+            ));
         }
     }
 
@@ -183,6 +189,31 @@ impl PithApp {
             self.metrics.mark_seek_done();
         }
     }
+
+    /// Запускает движок и подключает его к контексту OpenGL окна.
+    pub(super) fn start_engine(
+        cc: &eframe::CreationContext<'_>,
+        options: &EngineOptions,
+    ) -> Result<Engine, String> {
+        let loader = cc.get_proc_address.clone().ok_or_else(|| {
+            crate::tr!(
+                "контекст OpenGL недоступен: eframe не отдал загрузчик функций",
+                "OpenGL context unavailable: eframe gave no function loader"
+            )
+            .to_string()
+        })?;
+
+        let mut engine = Engine::new(options).map_err(engine_error_text)?;
+
+        // Пробуждаем интерфейс, когда mpv готов показать новый кадр.
+        // Внутри обратного вызова обращаться к mpv нельзя.
+        let egui_ctx = cc.egui_ctx.clone();
+        engine
+            .init_render_context(loader, move || egui_ctx.request_repaint())
+            .map_err(engine_error_text)?;
+
+        Ok(engine)
+    }
 }
 
 /// Локальный путь, которого нет на диске.
@@ -194,6 +225,32 @@ fn is_missing_local_file(path: &str) -> bool {
     }
 
     !std::path::Path::new(path).exists()
+}
+
+/// Текст ошибки запуска движка на языке интерфейса.
+///
+/// Подробность от libmpv остаётся как есть: она техническая и на любом
+/// языке выглядит одинаково — её пересылают в отчёте о неполадке.
+fn engine_error_text(error: pith_mpv::MpvError) -> String {
+    match error {
+        pith_mpv::MpvError::Init(detail) => crate::tr!(
+            format!(
+                "не удалось запустить движок mpv: {detail}. \
+                 Проверьте, что рядом с программой лежит libmpv-2.dll"
+            ),
+            format!(
+                "could not start the mpv engine: {detail}. \
+                 Check that libmpv-2.dll sits next to the program"
+            )
+        ),
+        pith_mpv::MpvError::Render(detail) => crate::tr!(
+            format!("не удалось создать контекст отрисовки mpv: {detail}"),
+            format!("could not create the mpv render context: {detail}")
+        ),
+        // Остальные ошибки движка до этого окна не доходят: они случаются
+        // уже в работе и показываются уведомлением.
+        other => other.to_string(),
+    }
 }
 
 #[cfg(test)]

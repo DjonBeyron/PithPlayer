@@ -73,6 +73,6 @@ impl PithApp {
         bookmark.name = if name.is_empty() { None } else { Some(name) };
 
         self.bookmarks.save();
-        self.show_notice("Закладка переименована");
+        self.show_notice(crate::tr!("Закладка переименована", "Bookmark renamed"));
     }
 }

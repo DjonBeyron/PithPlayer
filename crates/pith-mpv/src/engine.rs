@@ -48,6 +48,18 @@ pub struct PlaybackState {
     pub volume: i64,
     /// Скорость воспроизведения: 1.0 — обычная.
     pub speed: f64,
+    /// Звук выключен.
+    ///
+    /// Отдельно от нулевой громкости: выключение звука должно возвращать
+    /// ту громкость, что была, а не ноль.
+    pub muted: bool,
+    /// Файл повторяется по кругу.
+    pub looping: bool,
+    /// Файл доигран до конца и стоит на последнем кадре.
+    ///
+    /// mpv в этом состоянии остаётся с открытым файлом (`keep-open`),
+    /// но играть ему уже нечего: обычное «продолжить» ничего не делает.
+    pub finished: bool,
     /// Отображаемая ширина кадра с учётом поворота (`video-params/dw`).
     pub display_width: i64,
     /// Отображаемая высота кадра с учётом поворота (`video-params/dh`).
@@ -116,6 +128,8 @@ impl Engine {
             mpv: Box::new(mpv),
             state: PlaybackState {
                 volume: options.volume,
+                muted: options.muted,
+                looping: options.looping,
                 speed: 1.0,
                 ..Default::default()
             },
@@ -215,6 +229,40 @@ impl Engine {
         Ok(())
     }
 
+    /// Зацикливает файл или выключает цикл.
+    pub fn set_looping(&mut self, looping: bool) -> Result<()> {
+        let value = if looping { "inf" } else { "no" };
+
+        self.mpv
+            .set_property("loop-file", value)
+            .map_err(|e| MpvError::command("loop-file", e))?;
+
+        self.state.looping = looping;
+        tracing::debug!(looping, "повтор файла переключён");
+        Ok(())
+    }
+
+    /// Начинает файл сначала.
+    ///
+    /// Нужна, когда фильм доигран: mpv держит последний кадр, и обычное
+    /// «продолжить» ему уже нечего играть.
+    pub fn restart(&mut self) -> Result<()> {
+        self.state.finished = false;
+        self.seek_absolute(0.0)?;
+        self.set_paused(false)
+    }
+
+    /// Выключает и включает звук, не трогая громкость.
+    pub fn set_muted(&mut self, muted: bool) -> Result<()> {
+        self.mpv
+            .set_property("mute", muted)
+            .map_err(|e| MpvError::command("mute", e))?;
+
+        self.state.muted = muted;
+        tracing::debug!(muted, "звук переключён");
+        Ok(())
+    }
+
     /// Скорость воспроизведения.
     ///
     /// Ограничена разумными пределами: звук за их границами превращается
@@ -242,10 +290,14 @@ impl Engine {
             match result {
                 Ok(Event::FileLoaded) => {
                     self.state.file_loaded = true;
+                    self.state.finished = false;
                     events.push(EngineEvent::FileLoaded);
                 }
                 Ok(Event::EndFile(reason)) => {
                     tracing::debug!(?reason, "воспроизведение файла завершено");
+                    // Файл остаётся открытым на последнем кадре: нажатие
+                    // «играть» после этого должно начинать сначала.
+                    self.state.finished = true;
                     events.push(EngineEvent::EndFile);
                 }
                 Ok(Event::PlaybackRestart) => events.push(EngineEvent::SeekDone),
@@ -284,6 +336,9 @@ impl Engine {
         }
         if let Ok(v) = self.mpv.get_property::<i64>("volume") {
             self.state.volume = v;
+        }
+        if let Ok(v) = self.mpv.get_property::<bool>("mute") {
+            self.state.muted = v;
         }
         if let Ok(v) = self.mpv.get_property::<f64>("speed") {
             self.state.speed = v;

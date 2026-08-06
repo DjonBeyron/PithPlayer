@@ -53,20 +53,31 @@ impl PithApp {
     /// Название по умолчанию — реплика субтитров: в v4 закладки чаще всего
     /// подписывались именно фразой из фильма.
     pub fn add_bookmark_here(&mut self) {
-        let Some(key) = self.video_key() else {
-            self.show_notice("Файл не открыт");
-            return;
-        };
-
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
 
         let time_ms = (engine.state().position * 1000.0) as i64;
-        let name = self.subtitle_text.main.clone().map(|line| {
-            // Реплика может быть многострочной, а имя файла — нет.
-            line.replace('\n', " ").trim().to_string()
-        });
+        let name = self.subtitle_text.main.clone().and_then(clean_name);
+
+        self.add_bookmark(time_ms, name);
+    }
+
+    /// Ставит закладку на указанной секунде.
+    ///
+    /// Нужна поиску по субтитрам: закладка ставится прямо из списка
+    /// найденного, не перематывая туда и не дожидаясь реплики.
+    pub fn add_bookmark_at(&mut self, seconds: f64, name: Option<String>) {
+        let time_ms = (seconds.max(0.0) * 1000.0) as i64;
+        self.add_bookmark(time_ms, name.and_then(clean_name));
+    }
+
+    /// Общая часть: кладёт метку в активный список и сохраняет закладки.
+    fn add_bookmark(&mut self, time_ms: i64, name: Option<String>) {
+        let Some(key) = self.video_key() else {
+            self.show_notice(crate::tr!("Файл не открыт", "No file open"));
+            return;
+        };
 
         let duration = self.settings.fragments.duration_sec;
         let buffer = self.settings.fragments.buffer_sec;
@@ -80,11 +91,17 @@ impl PithApp {
             crate::slow::probe("сохранение закладок", || {
                 self.bookmarks.save()
             });
-            let label = name.unwrap_or_else(|| "закладка".into());
-            self.show_notice(&format!("Добавлено: {label}"));
+            let label = name.unwrap_or_else(|| crate::tr!("закладка", "bookmark").into());
+            self.show_notice(&crate::tr!(
+                format!("Добавлено: {label}"),
+                format!("Added: {label}")
+            ));
             tracing::info!(time_ms, "закладка добавлена");
         } else {
-            self.show_notice("Здесь уже есть закладка");
+            self.show_notice(crate::tr!(
+                "Здесь уже есть закладка",
+                "There is already a bookmark here"
+            ));
         }
     }
 
@@ -118,9 +135,9 @@ impl PithApp {
         match nearest {
             Some(found) if list.remove_at(found) => {
                 self.bookmarks.save();
-                self.show_notice("Закладка убрана");
+                self.show_notice(crate::tr!("Закладка убрана", "Bookmark removed"));
             }
-            _ => self.show_notice("Рядом нет закладок"),
+            _ => self.show_notice(crate::tr!("Рядом нет закладок", "No bookmarks nearby")),
         }
     }
 
@@ -258,77 +275,101 @@ impl PithApp {
         self.bookmarks_panel_warmup = self.bookmarks_panel_warmup.saturating_sub(1);
     }
 
-    /// Показывает панель при наведении на правый край окна.
+    /// Открыт ли диалог, вызванный из панели отрезков.
     ///
-    /// Так она вызывалась в v4: подвести курсор к правой стороне —
-    /// панель выезжает, увести — прячется.
-    pub(super) fn update_bookmarks_panel_hover(&mut self, ctx: &egui::Context) {
-        if self.bookmarks_panel_pinned {
+    /// Все они рисуются поверх неё, и на время их жизни панель остаётся
+    /// на месте, даже если курсор ушёл из окна.
+    fn panel_dialog_open(&self) -> bool {
+        self.list_dialog.is_some() || self.bookmark_rename.is_some() || self.clear_list_pending
+    }
+
+    /// Открывает панель — по нажатию на язычок у правого края.
+    ///
+    /// Раньше она выезжала от одного наведения и тем самым появлялась
+    /// незваной: курсор шёл к кнопкам полного экрана или просто пересекал
+    /// край экрана. Теперь её вызывают нажатием.
+    pub fn open_bookmarks_panel(&mut self) {
+        if self.bookmarks_panel {
             return;
         }
 
-        // Пока открыт диалог списка, панель не должна уезжать из-под него.
-        if self.list_dialog.is_some() {
-            self.bookmarks_panel = true;
+        // Панель только что вызвана — дадим ей кадр на разметку.
+        self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
+        self.bookmarks_panel = true;
+        tracing::debug!("панель отрезков открыта");
+    }
+
+    /// Закроется ли панель ближайшим нажатием мимо неё.
+    ///
+    /// По этому признаку кадр пропускает такое нажатие: щелчок, которым
+    /// панель убирают, не должен заодно ставить паузу. Пауза — за
+    /// следующим щелчком.
+    pub fn bookmarks_panel_dismissible(&self) -> bool {
+        self.bookmarks_panel && !self.panel_dialog_open()
+    }
+
+    /// Закрывает панель — по нажатию мимо неё.
+    pub fn close_bookmarks_panel(&mut self) {
+        if !self.bookmarks_panel {
             return;
         }
 
-        let screen = ctx.input(|i| i.viewport_rect());
-        let Some(pointer) = ctx.input(|i| i.pointer.hover_pos()) else {
-            // Курсор вне окна — прятать не спешим: он мог уйти на панель
-            // соседнего монитора.
-            return;
-        };
-
-        // Нижняя полоса принадлежит панели управления: там стоят кнопки
-        // полного экрана и растягивания, обе у правого края. Без этой
-        // проверки панель закладок выезжала от одного лишь нажатия на них.
-        if pointer.y >= screen.max.y - CONTROLS_ZONE_HEIGHT {
+        // Пока открыт вызванный из панели диалог, она остаётся на месте:
+        // нажатие в диалоге — это работа с панелью, а не мимо неё.
+        if self.panel_dialog_open() {
             return;
         }
 
-        let was_open = self.bookmarks_panel;
+        self.bookmarks_panel = false;
+        tracing::debug!("панель отрезков убрана: нажали мимо неё");
+    }
 
-        if pointer.x >= screen.max.x - HOVER_ZONE_WIDTH {
-            if !self.bookmarks_panel {
-                // Панель только что вызвана — дадим ей кадр на разметку.
-                self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
-            }
-            self.bookmarks_panel = true;
-        } else if self.bookmarks_panel && pointer.x < screen.max.x - PANEL_KEEP_WIDTH {
-            // Пока курсор над самой панелью, она остаётся на месте.
-            self.bookmarks_panel = false;
+    /// Следит за фокусом окна.
+    ///
+    /// Отсюда два следствия. Панель отрезков закрывается, когда работают
+    /// уже не с плеером: нажатие в другом окне до него не доходит, и
+    /// «нажали мимо» такого не ловит. И запоминается миг возвращения
+    /// фокуса — нажатием, которым окно подняли, паузу переключать нельзя.
+    pub(super) fn track_window_focus(&mut self, ctx: &egui::Context) {
+        let regained = ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|event| matches!(event, egui::Event::WindowFocused(true)))
+        });
+
+        if regained {
+            self.focus_regained_at = Some(self.frame_time);
         }
 
-        if was_open != self.bookmarks_panel {
-            tracing::debug!(
-                открыта = self.bookmarks_panel,
-                курсор_x = pointer.x,
-                "панель отрезков"
-            );
+        if !self.bookmarks_panel || ctx.input(|i| i.focused) {
+            return;
         }
+
+        // Диалоги панели иногда уводят фокус сами (выбор папки системным
+        // окном) — из-за такого ухода панель закрывать нельзя.
+        if self.panel_dialog_open() {
+            return;
+        }
+
+        self.bookmarks_panel = false;
+        tracing::debug!("панель отрезков убрана: плеер потерял фокус");
     }
 }
 
-/// Ширина полосы у правого края, вызывающей панель.
-const HOVER_ZONE_WIDTH: f32 = 40.0;
-
-/// Высота нижней полосы, где панель закладок не вызывается.
+/// Готовит реплику к роли названия закладки.
 ///
-/// Согласована с зоной показа панели управления: её кнопки стоят у того
-/// же правого края, и наведение на них не должно вытаскивать закладки.
-const CONTROLS_ZONE_HEIGHT: f32 = 90.0;
+/// Реплика бывает многострочной, а название — нет. Пустая после чистки
+/// строка названием не становится: закладка подпишется словом по умолчанию.
+fn clean_name(line: String) -> Option<String> {
+    let name = line.replace('\n', " ").trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
 
 /// Сколько кадров панель рисуется невидимой перед показом.
 ///
 /// Двух достаточно: на первом egui считает размеры списка, на втором —
 /// положение полосы прокрутки, которое от этих размеров зависит.
 const PANEL_WARMUP_FRAMES: u8 = 2;
-
-/// До какой границы слева панель считается «под курсором».
-///
-/// Чуть шире самой панели: иначе она мигала бы на её краю.
-const PANEL_KEEP_WIDTH: f32 = 380.0;
 
 /// Складывает отрезки списка в общий набор для полосы перемотки.
 fn push_ranges(ranges: &mut Vec<FragmentRange>, list: &BookmarkList, color: egui::Color32) {

@@ -11,17 +11,17 @@
 use egui::Color32;
 
 /// Фон панелей и области содержимого.
-pub const PANEL_BG: Color32 = Color32::from_rgb(0x1C, 0x1C, 0x1C);
+pub const PANEL_BG: Color32 = Color32::from_rgb(0x13, 0x13, 0x13);
 /// Фон окон и диалогов.
-pub const WINDOW_BG: Color32 = Color32::from_rgb(45, 45, 45);
+pub const WINDOW_BG: Color32 = Color32::from_rgb(30, 30, 30);
 /// Поля ввода.
-pub const INPUT_BG: Color32 = Color32::from_rgb(60, 60, 60);
+pub const INPUT_BG: Color32 = Color32::from_rgb(42, 42, 42);
 /// Кнопки и разделители.
-pub const CONTROL: Color32 = Color32::from_rgb(70, 70, 70);
+pub const CONTROL: Color32 = Color32::from_rgb(50, 50, 50);
 /// Подсветка строки под курсором.
-pub const HIGHLIGHT: Color32 = Color32::from_rgb(58, 72, 88);
+pub const HIGHLIGHT: Color32 = Color32::from_rgb(42, 54, 68);
 /// Тёмные зоны под видео.
-pub const DARK_BG: Color32 = Color32::from_rgb(30, 30, 30);
+pub const DARK_BG: Color32 = Color32::from_rgb(20, 20, 20);
 
 /// Основной текст.
 pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(255, 255, 255);
@@ -38,6 +38,27 @@ pub const TIMELINE_TRACK: Color32 = Color32::from_rgb(90, 90, 90);
 pub const FRAGMENT: Color32 = Color32::from_rgb(255, 205, 60);
 /// Метка закладки на полосе.
 pub const BOOKMARK: Color32 = Color32::from_rgb(255, 235, 130);
+
+// ===== Панель отрезков =====
+//
+// У неё своя, более глубокая гамма: панель занимает всю высоту окна и
+// стоит вплотную к кадру, а серый цвет остальных панелей рядом с видео
+// выглядит грязным пятном.
+
+/// Подложка панели.
+pub const PANEL_CARD: Color32 = Color32::from_rgb(0x10, 0x12, 0x17);
+/// Плашки внутри панели: переключатель списка, кнопки.
+pub const PANEL_ELEMENT: Color32 = Color32::from_rgb(0x1A, 0x1D, 0x23);
+/// Плашка под курсором.
+pub const PANEL_ELEMENT_HOVER: Color32 = Color32::from_rgb(0x22, 0x26, 0x2E);
+/// Обводка плашек и разделители.
+pub const PANEL_BORDER: Color32 = Color32::from_rgb(0x26, 0x2A, 0x32);
+/// Углубление: подсказка о пустом списке.
+pub const PANEL_SUNKEN: Color32 = Color32::from_rgb(0x0C, 0x0E, 0x12);
+/// Приглушённые подписи панели.
+pub const PANEL_MUTED: Color32 = Color32::from_rgb(0xA1, 0xA5, 0xB0);
+/// Числа и выделения в панели.
+pub const PANEL_ACCENT: Color32 = Color32::from_rgb(0xFA, 0xCC, 0x15);
 
 /// Цвета списков отрезков.
 ///
@@ -57,6 +78,38 @@ const LIST_COLORS: [Color32; 6] = [
 pub fn list_color(index: usize) -> Color32 {
     LIST_COLORS[index % LIST_COLORS.len()]
 }
+
+// ===== Окна настроек =====
+//
+// Своя гамма: тёмная подложка, карточки чуть светлее её, синий акцент —
+// тот же, каким налита пройденная часть полосы перемотки. Серые кнопки
+// остального интерфейса в окне настроек сливались в кашу: глазу не за что
+// зацепиться, а решения там принимают осознанно.
+
+/// Подложка окна настроек.
+pub const DIALOG_BG: Color32 = Color32::from_rgb(0x0F, 0x0F, 0x10);
+/// Карточка с группой настроек.
+pub const DIALOG_CARD: Color32 = Color32::from_rgb(0x18, 0x19, 0x1B);
+/// Поля ввода и неактивные переключатели.
+pub const DIALOG_FIELD: Color32 = Color32::from_rgb(0x27, 0x28, 0x2B);
+/// Обводка карточек, полей и разделители.
+pub const DIALOG_BORDER: Color32 = Color32::from_rgb(0x27, 0x28, 0x2B);
+/// Обводка кнопок и переключателей.
+pub const DIALOG_OUTLINE: Color32 = Color32::from_rgb(0x3A, 0x4A, 0x58);
+/// Заголовки и основной текст окна.
+pub const DIALOG_TEXT: Color32 = Color32::from_rgb(0xE5, 0xE2, 0xE1);
+/// Подписи полей.
+pub const DIALOG_LABEL: Color32 = Color32::from_rgb(0xBC, 0xC8, 0xD2);
+/// Пояснения под настройками.
+pub const DIALOG_MUTED: Color32 = Color32::from_rgb(0x8C, 0x92, 0x99);
+/// Акцент: текст кнопки с обводкой.
+pub const DIALOG_ACCENT: Color32 = ACCENT;
+/// Заливка главной кнопки и включённого переключателя.
+pub const DIALOG_ACCENT_FILL: Color32 = ACCENT;
+/// Текст на акцентной заливке.
+pub const DIALOG_ON_ACCENT: Color32 = Color32::from_rgb(0x0A, 0x20, 0x2E);
+/// Кружок переключателя.
+pub const DIALOG_KNOB: Color32 = Color32::from_rgb(0xC8, 0xC6, 0xC5);
 
 /// Текст субтитров.
 pub const SUBTITLE_TEXT: Color32 = Color32::from_rgb(255, 255, 255);

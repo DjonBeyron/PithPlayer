@@ -1,14 +1,23 @@
 //! Шрифты интерфейса.
 //!
-//! Вторые субтитры пользователь читает поверх основных, и различать их
-//! проще по начертанию, а не только по положению. Для них берётся
-//! Comfortaa — она установлена в системе, встраивать её в программу
-//! не нужно.
+//! У субтитров свои шрифты: основные — Montserrat, дополнительные —
+//! Comfortaa. Их читают одновременно, и разные начертания различают слои
+//! надёжнее, чем одно лишь положение на экране.
+//!
+//! Оба вложены в программу: вид субтитров не должен зависеть от того,
+//! что установлено на машине. Системная копия, если она есть, берётся
+//! первой — пользователь мог поставить свою версию.
+//!
+//! Оба распространяются по SIL Open Font License, вкладывать их
+//! в программу лицензия разрешает (assets/Comfortaa-OFL.txt).
 
 use std::path::PathBuf;
 
 /// Имя семейства, под которым Comfortaa доступна в egui.
 pub const COMFORTAA: &str = "comfortaa";
+
+/// Имя семейства, под которым Montserrat доступна в egui.
+pub const MONTSERRAT: &str = "montserrat";
 
 /// Имя семейства со значками интерфейса.
 pub const ICONS: &str = "icons";
@@ -43,53 +52,43 @@ pub fn icon_family() -> egui::FontFamily {
 ///
 /// Шрифты, поставленные «для себя», лежат в профиле — именно так их
 /// обычно и устанавливают.
-fn candidates() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
+fn candidates(names: &[&str]) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
 
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        paths.push(PathBuf::from(&local).join("Microsoft\\Windows\\Fonts\\Comfortaa-Regular.ttf"));
-        paths.push(PathBuf::from(&local).join("Microsoft\\Windows\\Fonts\\Comfortaa-Medium.ttf"));
+        roots.push(PathBuf::from(local).join("Microsoft\\Windows\\Fonts"));
     }
 
     if let Ok(windir) = std::env::var("WINDIR") {
-        paths.push(PathBuf::from(&windir).join("Fonts\\Comfortaa-Regular.ttf"));
-        paths.push(PathBuf::from(&windir).join("Fonts\\Comfortaa-Medium.ttf"));
+        roots.push(PathBuf::from(windir).join("Fonts"));
     }
 
-    paths
+    roots
+        .iter()
+        .flat_map(|root| names.iter().map(|name| root.join(name)))
+        .collect()
 }
 
-/// Подключает системные шрифты: Comfortaa для вторых субтитров и набор
-/// значков для кнопок.
+/// Подключает шрифты субтитров и набор значков для кнопок.
 ///
-/// Отсутствие любого из них — не ошибка: субтитры останутся в обычном
-/// шрифте, а кнопки покажут запасные символы.
+/// Шрифты субтитров есть всегда — встроенные копии лежат в программе.
+/// Набор значков системный, и его отсутствие не ошибка: кнопки покажут
+/// запасные символы.
 pub fn install(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    let comfortaa = comfortaa_data();
-    if let Some((source, data)) = &comfortaa {
-        fonts.font_data.insert(
-            COMFORTAA.to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(data.clone())),
-        );
-
-        // Отдельное семейство, а не подмена основного: остальной интерфейс
-        // остаётся на прежнем шрифте.
-        fonts.families.insert(
-            egui::FontFamily::Name(COMFORTAA.into()),
-            vec![
-                COMFORTAA.to_owned(),
-                // Запасной: у Comfortaa нет кириллицы в старых версиях,
-                // недостающие знаки возьмутся из обычного шрифта.
-                "Ubuntu-Light".to_owned(),
-            ],
-        );
-
-        tracing::info!(source, "Comfortaa подключена для вторых субтитров");
-    } else {
-        tracing::info!("Comfortaa не найдена — вторые субтитры оставляю в обычном шрифте");
-    }
+    install_subtitle_font(
+        &mut fonts,
+        COMFORTAA,
+        comfortaa_data(),
+        "дополнительных субтитров",
+    );
+    install_subtitle_font(
+        &mut fonts,
+        MONTSERRAT,
+        montserrat_data(),
+        "основных субтитров",
+    );
 
     let icons = load_first(&icon_candidates());
     if let Some((path, data)) = &icons {
@@ -108,9 +107,37 @@ pub fn install(ctx: &egui::Context) {
 
     let _ = ICONS_READY.set(icons.is_some());
 
-    if comfortaa.is_some() || icons.is_some() {
-        ctx.set_fonts(fonts);
-    }
+    ctx.set_fonts(fonts);
+}
+
+/// Добавляет шрифт субтитров отдельным семейством.
+///
+/// Именно отдельным, а не подменой основного: остальной интерфейс
+/// остаётся на прежнем шрифте.
+fn install_subtitle_font(
+    fonts: &mut egui::FontDefinitions,
+    name: &str,
+    font: (&'static str, Vec<u8>),
+    purpose: &str,
+) {
+    let (source, data) = font;
+
+    fonts.font_data.insert(
+        name.to_owned(),
+        std::sync::Arc::new(egui::FontData::from_owned(data)),
+    );
+
+    fonts.families.insert(
+        egui::FontFamily::Name(name.into()),
+        vec![
+            name.to_owned(),
+            // Запасной: если в шрифте не окажется нужных знаков,
+            // они возьмутся из обычного.
+            "Ubuntu-Light".to_owned(),
+        ],
+    );
+
+    tracing::info!(шрифт = name, источник = source, "шрифт {purpose} подключён");
 }
 
 /// Первый читаемый файл из списка.
@@ -121,24 +148,40 @@ fn load_first(paths: &[PathBuf]) -> Option<(PathBuf, Vec<u8>)> {
 }
 
 /// Comfortaa: сначала из системы, иначе — встроенная копия.
-///
-/// Копия лежит в самой программе, поэтому вторые субтитры выглядят
-/// одинаково на любой машине, даже там, где шрифт не установлен.
-/// Системная версия предпочтительнее: пользователь мог поставить свою.
-///
-/// Шрифт распространяется по SIL Open Font License — вкладывать его
-/// в программу лицензия разрешает (assets/Comfortaa-OFL.txt).
-fn comfortaa_data() -> Option<(&'static str, Vec<u8>)> {
+fn comfortaa_data() -> (&'static str, Vec<u8>) {
     const BUILT_IN: &[u8] = include_bytes!("../assets/Comfortaa-Regular.ttf");
 
-    if let Some((_, data)) = load_first(&candidates()) {
-        return Some(("система", data));
-    }
-
-    Some(("встроенная копия", BUILT_IN.to_vec()))
+    load_from_system(&["Comfortaa-Regular.ttf", "Comfortaa-Medium.ttf"], BUILT_IN)
 }
 
-/// Семейство для вторых субтитров.
+/// Montserrat: сначала из системы, иначе — встроенная копия.
+fn montserrat_data() -> (&'static str, Vec<u8>) {
+    const BUILT_IN: &[u8] = include_bytes!("../assets/Montserrat-Regular.ttf");
+
+    load_from_system(
+        &["Montserrat-Regular.ttf", "Montserrat-Medium.ttf"],
+        BUILT_IN,
+    )
+}
+
+/// Системная копия шрифта, а если её нет — встроенная в программу.
+///
+/// Системная предпочтительнее: пользователь мог поставить свою версию,
+/// например с большим набором знаков.
+fn load_from_system(names: &[&str], built_in: &'static [u8]) -> (&'static str, Vec<u8>) {
+    if let Some((_, data)) = load_first(&candidates(names)) {
+        return ("система", data);
+    }
+
+    ("встроенная копия", built_in.to_vec())
+}
+
+/// Семейство основных субтитров.
+pub fn main_subtitle_family() -> egui::FontFamily {
+    egui::FontFamily::Name(MONTSERRAT.into())
+}
+
+/// Семейство дополнительных субтитров.
 pub fn secondary_subtitle_family() -> egui::FontFamily {
     egui::FontFamily::Name(COMFORTAA.into())
 }

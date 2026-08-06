@@ -58,6 +58,19 @@ impl DataPaths {
         self.root.join("logs")
     }
 
+    /// История открытых файлов и папок.
+    pub fn history(&self) -> PathBuf {
+        self.root.join("history.json")
+    }
+
+    /// Каталог мозаик миниатюр для предпросмотра на полосе перемотки.
+    ///
+    /// Содержимое восстановимо: его можно удалить в любой момент, плеер
+    /// соберёт мозаику заново.
+    pub fn thumbnails(&self) -> PathBuf {
+        self.root.join("thumbs")
+    }
+
     /// Создаёт каталог данных, если его ещё нет.
     pub fn ensure_exists(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.root)

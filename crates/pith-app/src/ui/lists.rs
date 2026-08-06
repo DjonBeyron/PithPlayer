@@ -2,6 +2,7 @@
 
 use crate::app::{ListDialog, PithApp};
 use crate::theme;
+use crate::tr;
 
 /// Ширина диалога.
 const DIALOG_WIDTH: f32 = 380.0;
@@ -10,37 +11,43 @@ const DIALOG_WIDTH: f32 = 380.0;
 const MAX_DURATION: u32 = 600;
 const MAX_BUFFER: u32 = 120;
 
-/// Строка выбора списка и кнопки операций над ним.
+/// Отступ в начале названия списка — под кружок его цвета.
+const DOT_SPACE: &str = "      ";
+
+/// Радиус кружка и его отступ от левого края строки.
+const DOT_RADIUS: f32 = 4.5;
+const DOT_OFFSET: f32 = 14.0;
+
+/// Содержимое меню выбора списка.
 ///
-/// Возвращать действия наружу не требуется: панель рисуется по `&mut PithApp`,
-/// и команды применяются сразу.
-pub fn show_switcher(app: &mut PithApp, ui: &mut egui::Ui) {
+/// Саму плашку рисует шапка панели: там она согласована с остальными
+/// её частями, а здесь остаются только пункты.
+pub fn show_choices(app: &mut PithApp, ui: &mut egui::Ui) {
     let names = app.list_names();
     let Some(active) = app.active_list_name() else {
         return;
     };
 
+    ui.set_min_width(180.0);
+
     let mut chosen = None;
 
-    ui.horizontal(|ui| {
-        // Кружок цвета: тем же цветом отрезки списка отмечены на полосе.
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+    for (index, name) in names.iter().enumerate() {
+        // Отступ под кружок: без него точка липла к первой букве.
+        let label = egui::RichText::new(format!("{DOT_SPACE}{name}")).color(theme::TEXT_PRIMARY);
+
+        let response = ui.selectable_label(*name == active, label);
+
+        // Кружок цвета рисуем кистью: знака ● в шрифте может не быть.
+        let center = egui::pos2(response.rect.left() + DOT_OFFSET, response.rect.center().y);
         ui.painter()
-            .circle_filled(rect.center(), 5.0, app.active_list_color());
+            .circle_filled(center, DOT_RADIUS, theme::list_color(index));
 
-        egui::ComboBox::from_id_salt("bookmark_lists")
-            .selected_text(&active)
-            .width(200.0)
-            .show_ui(ui, |ui| {
-                for name in &names {
-                    if ui.selectable_label(*name == active, name).clicked() {
-                        chosen = Some(name.clone());
-                    }
-                }
-            });
-
-        show_actions_menu(app, ui);
-    });
+        if response.clicked() {
+            chosen = Some(name.clone());
+            ui.close();
+        }
+    }
 
     if let Some(name) = chosen
         && name != active
@@ -49,23 +56,29 @@ pub fn show_switcher(app: &mut PithApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Меню операций: создать, настроить, дублировать, удалить.
-fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
+/// Содержимое меню операций: создать, настроить, дублировать, удалить.
+pub fn show_actions(app: &mut PithApp, ui: &mut egui::Ui) {
     let mut action = None;
     let only_one = app.list_names().len() <= 1;
 
-    ui.menu_button(crate::ui::icons::SETTINGS.text(), |ui| {
+    {
         ui.set_min_width(180.0);
 
-        if ui.button("Новый список…").clicked() {
+        if ui.button(tr!("Новый список…", "New list…")).clicked() {
             action = Some(Action::New);
             ui.close();
         }
-        if ui.button("Настроить список…").clicked() {
+        if ui
+            .button(tr!("Настроить список…", "List settings…"))
+            .clicked()
+        {
             action = Some(Action::Settings);
             ui.close();
         }
-        if ui.button("Дублировать список").clicked() {
+        if ui
+            .button(tr!("Дублировать список", "Duplicate list"))
+            .clicked()
+        {
             action = Some(Action::Duplicate);
             ui.close();
         }
@@ -73,8 +86,14 @@ fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.separator();
 
         if ui
-            .add_enabled(!only_one, egui::Button::new("Удалить список"))
-            .on_disabled_hover_text("Последний список удалить нельзя")
+            .add_enabled(
+                !only_one,
+                egui::Button::new(tr!("Удалить список", "Delete list")),
+            )
+            .on_disabled_hover_text(tr!(
+                "Последний список удалить нельзя",
+                "The last list cannot be deleted"
+            ))
             .clicked()
         {
             action = Some(Action::Delete);
@@ -84,16 +103,17 @@ fn show_actions_menu(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.separator();
 
         if ui
-            .button("Настройки нарезки…")
-            .on_hover_text("Значения по умолчанию для новых списков")
+            .button(tr!("Настройки нарезки…", "Fragment settings…"))
+            .on_hover_text(tr!(
+                "Значения по умолчанию для новых списков",
+                "Defaults for new lists"
+            ))
             .clicked()
         {
             action = Some(Action::FragmentSettings);
             ui.close();
         }
-    })
-    .response
-    .on_hover_text("Действия со списком");
+    }
 
     match action {
         Some(Action::New) => app.open_new_list_dialog(),
@@ -125,6 +145,7 @@ pub fn show_dialog(app: &mut PithApp, ctx: &egui::Context) {
     let mut clear_dir = false;
 
     egui::Window::new(dialog.title())
+        .order(egui::Order::Foreground)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -135,11 +156,13 @@ pub fn show_dialog(app: &mut PithApp, ctx: &egui::Context) {
                 return;
             };
 
-            ui.label(egui::RichText::new("Имя списка").color(theme::TEXT_SECONDARY));
+            ui.label(
+                egui::RichText::new(tr!("Имя списка", "List name")).color(theme::TEXT_SECONDARY),
+            );
             let name = ui.add(
                 egui::TextEdit::singleline(&mut fields.name)
                     .desired_width(f32::INFINITY)
-                    .hint_text("Диалоги"),
+                    .hint_text(tr!("Диалоги", "Dialogue")),
             );
 
             if fields.focus_pending {
@@ -160,8 +183,8 @@ pub fn show_dialog(app: &mut PithApp, ctx: &egui::Context) {
 
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                apply |= ui.button("Сохранить").clicked();
-                cancel |= ui.button("Отмена").clicked();
+                apply |= ui.button(tr!("Сохранить", "Save")).clicked();
+                cancel |= ui.button(tr!("Отмена", "Cancel")).clicked();
             });
         });
 
@@ -200,7 +223,8 @@ pub fn show_clear_prompt(app: &mut PithApp, ctx: &egui::Context) {
     let mut confirm = false;
     let mut cancel = false;
 
-    egui::Window::new("Очистить список?")
+    egui::Window::new(tr!("Очистить список?", "Clear the list?"))
+        .order(egui::Order::Foreground)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -208,17 +232,23 @@ pub fn show_clear_prompt(app: &mut PithApp, ctx: &egui::Context) {
             ui.set_width(DIALOG_WIDTH);
 
             ui.label(
-                egui::RichText::new(format!(
-                    "Из списка «{name}» будут убраны все закладки: {count}. \
-                     Сам список останется, вырезанные отрезки не тронутся."
+                egui::RichText::new(tr!(
+                    format!(
+                        "Из списка «{name}» будут убраны все закладки: {count}. \
+                         Сам список останется, вырезанные отрезки не тронутся."
+                    ),
+                    format!(
+                        "All {count} bookmarks will be removed from «{name}». \
+                         The list itself stays, cut fragments are untouched."
+                    )
                 ))
                 .color(theme::TEXT_SECONDARY),
             );
 
             ui.add_space(14.0);
             ui.horizontal(|ui| {
-                confirm |= ui.button("Очистить").clicked();
-                cancel |= ui.button("Отмена").clicked();
+                confirm |= ui.button(tr!("Очистить", "Clear")).clicked();
+                cancel |= ui.button(tr!("Отмена", "Cancel")).clicked();
             });
         });
 
@@ -236,40 +266,52 @@ pub fn show_clear_prompt(app: &mut PithApp, ctx: &egui::Context) {
 /// Длительность фрагмента и отступ назад от метки.
 fn show_numbers(fields: &mut ListDialog, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Длительность, с").color(theme::TEXT_SECONDARY));
+        ui.label(
+            egui::RichText::new(tr!("Длительность, с", "Duration, s")).color(theme::TEXT_SECONDARY),
+        );
         ui.add(egui::DragValue::new(&mut fields.duration_sec).range(1..=MAX_DURATION));
 
         ui.add_space(12.0);
 
-        ui.label(egui::RichText::new("Отступ назад, с").color(theme::TEXT_SECONDARY));
+        ui.label(
+            egui::RichText::new(tr!("Отступ назад, с", "Lead-in, s")).color(theme::TEXT_SECONDARY),
+        );
         ui.add(egui::DragValue::new(&mut fields.buffer_sec).range(0..=MAX_BUFFER));
     });
 
     ui.label(
-        egui::RichText::new("Отрезок начинается за «отступ» до метки")
-            .color(theme::TEXT_DISABLED)
-            .small(),
+        egui::RichText::new(tr!(
+            "Отрезок начинается за «отступ» до метки",
+            "The fragment starts one lead-in before the mark"
+        ))
+        .color(theme::TEXT_DISABLED)
+        .small(),
     );
 }
 
 /// Своя папка вывода списка.
 fn show_output_dir(fields: &ListDialog, ui: &mut egui::Ui, pick: &mut bool, clear: &mut bool) {
-    ui.label(egui::RichText::new("Папка вывода").color(theme::TEXT_SECONDARY));
+    ui.label(
+        egui::RichText::new(tr!("Папка вывода", "Output folder")).color(theme::TEXT_SECONDARY),
+    );
 
     ui.horizontal(|ui| {
-        *pick |= ui.button("Выбрать…").clicked();
+        *pick |= ui.button(tr!("Выбрать…", "Choose…")).clicked();
 
         if fields.output_dir.is_some() {
             *clear |= ui
-                .button("Общая")
-                .on_hover_text("Складывать в общую папку из настроек")
+                .button(tr!("Общая", "Shared"))
+                .on_hover_text(tr!(
+                    "Складывать в общую папку из настроек",
+                    "Use the shared folder from settings"
+                ))
                 .clicked();
         }
     });
 
     let text = match &fields.output_dir {
         Some(dir) => dir.to_string_lossy().to_string(),
-        None => "Общая папка из настроек".to_string(),
+        None => tr!("Общая папка из настроек", "Shared folder from settings").to_string(),
     };
 
     ui.label(

@@ -8,6 +8,7 @@ mod associations;
 mod bench;
 mod cli;
 mod fonts;
+mod i18n;
 mod logging;
 mod single_instance;
 mod slow;
@@ -29,7 +30,7 @@ fn main() -> eframe::Result<()> {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
 
     if raw_args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("{}", cli::HELP);
+        println!("{}", cli::HELP); // разрешено: справку и просят в консоль
         return Ok(());
     }
 
@@ -48,7 +49,9 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: restore_geometry(
             egui::ViewportBuilder::default()
-                .with_title(format!("Pith Player {}", env!("CARGO_PKG_VERSION")))
+                // Без номера версии: заголовок занят именем файла,
+                // а версия стоит в шапке панели отрезков.
+                .with_title("Pith Player")
                 // Минимум согласован с подгонкой окна под форму видео:
                 // уже этого панель управления не помещается (window.rs).
                 .with_min_inner_size([380.0, 260.0])

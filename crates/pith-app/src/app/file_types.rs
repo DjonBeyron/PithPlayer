@@ -57,20 +57,32 @@ impl PithApp {
         let result = associations::current_exe().and_then(|exe| associations::register(&exe));
 
         match result {
-            Ok(count) => self.show_notice(&format!("Видеофайлы связаны с плеером: {count}")),
+            Ok(count) => self.show_notice(&crate::tr!(
+                format!("Видеофайлы связаны с плеером: {count}"),
+                format!("Video files linked to the player: {count}")
+            )),
             Err(e) => {
                 tracing::error!(error = %e, "не удалось связать файлы");
-                self.show_notice("Не удалось изменить ассоциации");
+                self.show_notice(crate::tr!(
+                    "Не удалось изменить ассоциации",
+                    "Could not change file associations"
+                ));
             }
         }
     }
 
     fn unregister_file_types(&mut self) {
         match associations::unregister() {
-            Ok(()) => self.show_notice("Связь с видеофайлами снята"),
+            Ok(()) => self.show_notice(crate::tr!(
+                "Связь с видеофайлами снята",
+                "Video files unlinked"
+            )),
             Err(e) => {
                 tracing::error!(error = %e, "не удалось снять ассоциации");
-                self.show_notice("Не удалось изменить ассоциации");
+                self.show_notice(crate::tr!(
+                    "Не удалось изменить ассоциации",
+                    "Could not change file associations"
+                ));
             }
         }
     }
@@ -86,30 +98,46 @@ pub enum FileTypesPrompt {
 impl FileTypesPrompt {
     pub fn title(self) -> &'static str {
         match self {
-            Self::Register => "Связать видеофайлы с плеером?",
-            Self::Unregister => "Снять связь с видеофайлами?",
+            Self::Register => crate::tr!(
+                "Связать видеофайлы с плеером?",
+                "Link video files to the player?"
+            ),
+            Self::Unregister => crate::tr!("Снять связь с видеофайлами?", "Unlink video files?"),
         }
     }
 
     pub fn explanation(self) -> String {
         match self {
-            Self::Register => format!(
-                "Плеер появится в списке «Открыть с помощью» для {} расширений: {}.\n\
-                 Программа по умолчанию не меняется — её выбираете вы сами \
-                 в настройках Windows.",
-                associations::EXTENSIONS.len(),
-                associations::EXTENSIONS.join(", ")
+            Self::Register => crate::tr!(
+                format!(
+                    "Плеер появится в списке «Открыть с помощью» для {} расширений: {}.\n\
+                     Программа по умолчанию не меняется — её выбираете вы сами \
+                     в настройках Windows.",
+                    associations::EXTENSIONS.len(),
+                    associations::EXTENSIONS.join(", ")
+                ),
+                format!(
+                    "The player joins the «Open with» list for {} extensions: {}.\n\
+                     The default program does not change — you pick it yourself \
+                     in Windows settings.",
+                    associations::EXTENSIONS.len(),
+                    associations::EXTENSIONS.join(", ")
+                )
             ),
-            Self::Unregister => "Записи плеера будут удалены из списка программ для видеофайлов. \
-                 Чужие настройки не затрагиваются."
-                .to_string(),
+            Self::Unregister => crate::tr!(
+                "Записи плеера будут удалены из списка программ для видеофайлов. \
+                 Чужие настройки не затрагиваются.",
+                "The player entries will be removed from the list of programs for \
+                 video files. Other settings are untouched."
+            )
+            .to_string(),
         }
     }
 
     pub fn confirm_label(self) -> &'static str {
         match self {
-            Self::Register => "Связать",
-            Self::Unregister => "Снять связь",
+            Self::Register => crate::tr!("Связать", "Link"),
+            Self::Unregister => crate::tr!("Снять связь", "Unlink"),
         }
     }
 }

@@ -66,6 +66,15 @@ impl PithApp {
         self.start_jobs(plans);
     }
 
+    /// Режет один отрезок — тот, что напротив нажатой закладки.
+    ///
+    /// Резать весь список ради одной метки долго: на длинном списке это
+    /// десятки файлов и минуты ожидания, а нужен бывает ровно один.
+    pub fn start_extraction_one(&mut self, time_ms: i64) {
+        let plans = self.plan_single_bookmark(time_ms);
+        self.start_jobs(plans);
+    }
+
     /// Отдаёт работу фоновому потоку и сразу показывает сообщение.
     ///
     /// Подготовка задач зовёт `ffprobe` и занимает секунды на большом
@@ -81,7 +90,10 @@ impl PithApp {
 
         let bookmarks: usize = plans.iter().map(|p| p.list.bookmarks.len()).sum();
         if bookmarks == 0 {
-            self.show_notice("Нет закладок для нарезки");
+            self.show_notice(crate::tr!(
+                "Нет закладок для нарезки",
+                "No bookmarks to cut"
+            ));
             return;
         }
 
@@ -164,6 +176,27 @@ impl PithApp {
             list: list.clone(),
             dir,
         }]
+    }
+
+    /// Тот же активный список, но с единственной закладкой.
+    ///
+    /// Настройки отрезка — длительность, отступ, папка — берутся у списка:
+    /// одиночная нарезка ничем от общей не отличается, кроме числа меток.
+    fn plan_single_bookmark(&self, time_ms: i64) -> Vec<ListPlan> {
+        let Some(list) = self.current_bookmarks().and_then(|v| v.active()) else {
+            return Vec::new();
+        };
+        let Some(dir) = self.output_dir_for(list) else {
+            return Vec::new();
+        };
+        let Some(bookmark) = list.bookmarks.iter().find(|b| b.time_ms == time_ms) else {
+            return Vec::new();
+        };
+
+        let mut single = list.clone();
+        single.bookmarks = vec![bookmark.clone()];
+
+        vec![ListPlan { list: single, dir }]
     }
 
     /// Все списки видео, каждый — в подпапку со своим именем.
@@ -262,7 +295,10 @@ impl PithApp {
             ExtractionEvent::DirectoryFailed => {
                 self.extraction.progress = None;
                 self.extraction.events = None;
-                self.show_notice("Не удалось создать папку для отрезков");
+                self.show_notice(crate::tr!(
+                    "Не удалось создать папку для отрезков",
+                    "Could not create the folder for fragments"
+                ));
             }
         }
     }
@@ -287,13 +323,24 @@ const DEFAULT_WORKERS: usize = 3;
 
 fn summarize(progress: ExtractionProgress) -> String {
     if progress.failed == 0 {
-        format!("Готово: {} отрезков", progress.total)
+        crate::tr!(
+            format!("Готово: {} отрезков", progress.total),
+            format!("Done: {} fragments", progress.total)
+        )
     } else {
-        format!(
-            "Готово: {} из {}, с ошибками: {}",
-            progress.total - progress.failed,
-            progress.total,
-            progress.failed
+        crate::tr!(
+            format!(
+                "Готово: {} из {}, с ошибками: {}",
+                progress.total - progress.failed,
+                progress.total,
+                progress.failed
+            ),
+            format!(
+                "Done: {} of {}, failed: {}",
+                progress.total - progress.failed,
+                progress.total,
+                progress.failed
+            )
         )
     }
 }

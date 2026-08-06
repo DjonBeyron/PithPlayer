@@ -5,14 +5,14 @@
 
 use crate::theme;
 
-/// Высота полосы в покое.
-const TRACK_HEIGHT: f32 = 5.0;
+/// Высота полосы в покое. Тем же значением рисуется громкость.
+pub(super) const TRACK_HEIGHT: f32 = 5.0;
 /// Высота полосы под курсором.
 const TRACK_HEIGHT_HOVER: f32 = 8.0;
 /// Радиус кружка на текущей позиции.
-const KNOB_RADIUS: f32 = 7.0;
+pub(super) const KNOB_RADIUS: f32 = 7.0;
 /// Высота области захвата — по ней ловится клик мимо тонкой полосы.
-const HIT_HEIGHT: f32 = 22.0;
+pub(super) const HIT_HEIGHT: f32 = 22.0;
 
 /// Отрезок, который попадёт в сохранённый фрагмент.
 ///
@@ -172,60 +172,6 @@ fn paint_fragments(
 
         painter.rect_filled(rect, 0.0, fragment.color);
     }
-}
-
-/// Полоса громкости — той же высоты и в том же стиле, что перемотка.
-///
-/// Стандартный ползунок egui выглядит рядом с ней чужеродно: другая
-/// высота, свой кружок, свои отступы.
-///
-/// Возвращает новое значение, когда пользователь его меняет.
-pub fn volume_bar(ui: &mut egui::Ui, volume: i64, width: f32, max: i64) -> Option<i64> {
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(width, HIT_HEIGHT), egui::Sense::click_and_drag());
-
-    let hovered = response.hovered() || response.dragged();
-
-    // Высота постоянная, в отличие от полосы перемотки: громкость стоит
-    // рядом с ней в одну линию, и утолщение под курсором ломало ряд.
-    let track_height = TRACK_HEIGHT;
-
-    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(width, track_height));
-    let painter = ui.painter();
-    let radius = track_height / 2.0;
-
-    painter.rect_filled(track, radius, theme::TIMELINE_TRACK);
-
-    let filled = (volume as f32 / max as f32).clamp(0.0, 1.0);
-    if filled > 0.0 {
-        let played =
-            egui::Rect::from_min_size(track.min, egui::vec2(track.width() * filled, track_height));
-        painter.rect_filled(played, radius, theme::ACCENT.gamma_multiply(0.75));
-    }
-
-    if hovered {
-        let knob_x = track.min.x + track.width() * filled;
-        painter.circle_filled(
-            egui::pos2(knob_x, track.center().y),
-            KNOB_RADIUS,
-            theme::TEXT_PRIMARY,
-        );
-    }
-
-    if !(response.dragged() || response.clicked()) {
-        return None;
-    }
-
-    let pointer = response
-        .interact_pointer_pos()
-        .or_else(|| response.hover_pos())?;
-
-    if track.width() <= 0.0 {
-        return None;
-    }
-
-    let ratio = ((pointer.x - track.min.x) / track.width()).clamp(0.0, 1.0);
-    Some((ratio * max as f32).round() as i64)
 }
 
 /// Время, соответствующее координате X на полосе.

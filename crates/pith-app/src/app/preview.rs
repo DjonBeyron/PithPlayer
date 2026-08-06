@@ -1,85 +1,148 @@
-//! Предпросмотр кадра при перемотке.
+//! Предпросмотр кадра на полосе перемотки.
 //!
-//! Пока ползунок под пальцем, полезно видеть, что происходит в том месте
-//! фильма. Кадр достаёт FFmpeg отдельным процессом: сам плеер при этом
-//! продолжает показывать своё, и картинка не мигает.
+//! Источников два, и они дополняют друг друга.
+//!
+//! Мозаика миниатюр собирается в фоне сразу после открытия файла: пока
+//! мышь скользит по полосе, клетка из неё показывается мгновенно — ничего
+//! декодировать не нужно. Так работает предпросмотр в браузерных плеерах.
+//!
+//! Точный кадр достаёт второй экземпляр mpv (см. [`super::preview_source`]):
+//! он держит файл открытым и отвечает за десятки миллисекунд. Им уточняется
+//! то место, где пользователь остановился.
 
 use std::sync::mpsc::{Receiver, channel};
-use std::time::Instant;
+
+use pith_fragments::Storyboard;
 
 use super::PithApp;
+use super::preview_source::FrameSource;
 
-/// Насколько должно измениться время, чтобы просить новый кадр, секунды.
+/// Насколько должно измениться место, чтобы просить новый точный кадр.
 ///
-/// Пока пользователь ведёт мышь, позиция меняется непрерывно. Каждый
-/// кадр — отдельный запуск FFmpeg, и просить их на каждое движение
-/// бессмысленно: они не успеют.
-const STEP: f64 = 1.5;
+/// Мышь двигается непрерывно, и на каждый пиксель кадр не нужен: соседние
+/// места отличаются на доли секунды и выглядят одинаково.
+const STEP: f64 = 0.2;
 
-/// Как часто вообще можно просить кадр.
-///
-/// Согласовано с замером: на 4К HEVC кадр достаётся примерно за 220 мс,
-/// и просить чаще — значит копить процессы, которые уже не нужны.
-const INTERVAL_MS: u128 = 150;
+/// Точный кадр от второго экземпляра mpv.
+struct ExactFrame {
+    /// Время, которое просили.
+    time: f64,
+    texture: egui::TextureHandle,
+}
 
-/// Сколько мышь должна простоять на месте, прежде чем просить кадр.
-///
-/// Пока рука ведёт ползунок, чтение файла отдельным процессом мешает
-/// движку, и перемотка идёт рывками. Кадр нужен там, где пользователь
-/// остановился, — его и достаём.
-const SETTLE_MS: u128 = 180;
+/// Мозаика миниатюр, готовая к показу.
+struct Board {
+    layout: Storyboard,
+    texture: egui::TextureHandle,
+}
 
-/// Готовый кадр предпросмотра.
-pub struct PreviewFrame {
-    /// Время, которому кадр соответствует.
-    pub time: f64,
-    /// Изображение в памяти egui.
-    pub texture: egui::TextureHandle,
+/// Что показать в окошке предпросмотра.
+pub struct PreviewImage<'a> {
+    pub texture: &'a egui::TextureHandle,
+    /// Какую часть картинки показывать: у мозаики это одна клетка.
+    pub uv: egui::Rect,
+    /// Размер этой части в точках — нужен, чтобы сохранить пропорции кадра.
+    pub size: egui::Vec2,
 }
 
 /// Состояние предпросмотра.
 #[derive(Default)]
 pub struct PreviewState {
-    /// Показанный кадр.
-    frame: Option<PreviewFrame>,
-    /// Время, для которого кадр уже заказан.
+    /// Точный кадр под курсором.
+    frame: Option<ExactFrame>,
+    /// Мозаика миниатюр всего фильма.
+    board: Option<Board>,
+    /// Сборка мозаики идёт в фоне.
+    building: Option<Receiver<Option<(Storyboard, egui::ColorImage)>>>,
+    /// Мозаику собрать не удалось — второй раз не пробуем.
+    board_failed: bool,
+    /// Поток со вторым экземпляром mpv.
+    source: Option<FrameSource>,
+    /// Для какого места точный кадр уже заказан.
     requested: Option<f64>,
-    /// Когда заказывали в последний раз.
-    last_request: Option<Instant>,
-    /// Место, для которого кадр нужен, но запрос ещё не ушёл.
-    wanted: Option<f64>,
-    /// Когда это место было выбрано — от него отсчитывается пауза.
-    wanted_since: Option<Instant>,
-    /// Ответ фонового потока: время и картинка в PNG.
-    result: Option<Receiver<(f64, Vec<u8>)>>,
 }
 
 impl PithApp {
-    /// Кадр предпросмотра, если он готов.
-    pub fn preview_frame(&self) -> Option<&PreviewFrame> {
-        self.preview.frame.as_ref()
+    /// Что показать в окошке предпросмотра для этого места.
+    ///
+    /// Точный кадр показывается, когда он про это самое место; иначе —
+    /// клетка мозаики. Пока не готово ни то ни другое, окошко пустое,
+    /// но своего размера: прыгать под курсором оно не должно.
+    pub fn preview_image(&self, time: f64) -> Option<PreviewImage<'_>> {
+        let board = self.preview.board.as_ref();
+
+        if let Some(frame) = self.preview.frame.as_ref() {
+            // Клетка мозаики отвечает за место лишь приблизительно —
+            // точный кадр лучше, пока он про то же место.
+            let precise =
+                board.is_none_or(|board| (frame.time - time).abs() <= board.layout.interval / 2.0);
+
+            if precise {
+                return Some(PreviewImage {
+                    texture: &frame.texture,
+                    uv: egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                    size: frame.texture.size_vec2(),
+                });
+            }
+        }
+
+        let board = board?;
+        Some(board.tile(time))
     }
 
-    /// Отмечает место, для которого нужен кадр.
+    /// Отмечает место, для которого нужен точный кадр.
     ///
-    /// Сам FFmpeg не запускается: пока мышь в движении, кадр всё равно
-    /// устареет раньше, чем будет готов, а чтение файла мешает mpv —
-    /// именно от этого перемотка «залипала» первые секунды. Запрос уходит,
-    /// когда рука остановилась (см. `poll_preview`).
+    /// Пока ползунок под пальцем и мозаика готова, точный кадр не просим:
+    /// второй экземпляр mpv читает тот же файл, что и основной, и мешает
+    /// ему перематывать — именно от этого перемотка «залипала». Клетка
+    /// мозаики за это время всё равно успевает смениться, а точный кадр
+    /// подтянется, как только рука остановится.
     pub fn request_preview(&mut self, time: f64) {
-        if self.preview.wanted != Some(time) {
-            self.preview.wanted = Some(time);
-            self.preview.wanted_since = Some(Instant::now());
+        if self.scrubbing && self.preview.board.is_some() {
+            // Забываем прошлый заказ: когда ползунок отпустят, кадр этого
+            // места нужно будет попросить заново.
+            self.preview.requested = None;
+            return;
+        }
+
+        if let Some(known) = self.preview.requested
+            && (known - time).abs() < STEP
+        {
+            return;
+        }
+
+        self.preview.requested = Some(time);
+
+        if let Some(source) = self.preview.source.as_ref() {
+            source.request(time);
         }
     }
 
-    /// Запускает отложенный запрос, если мышь замерла.
-    fn send_pending_preview(&mut self) {
-        let (Some(time), Some(since)) = (self.preview.wanted, self.preview.wanted_since) else {
-            return;
-        };
+    /// Убирает предпросмотр: курсор ушёл с полосы.
+    ///
+    /// Мозаику и второй экземпляр mpv не трогаем — они про весь файл,
+    /// а не про одно наведение, и собирать их заново было бы расточительно.
+    pub fn clear_preview(&mut self) {
+        self.preview.frame = None;
+        self.preview.requested = None;
+    }
 
-        if since.elapsed().as_millis() < SETTLE_MS {
+    /// Забывает всё о прошлом файле.
+    pub(super) fn reset_preview(&mut self) {
+        self.preview = PreviewState::default();
+    }
+
+    /// Готовит источники и забирает готовое. Вызывается каждый кадр.
+    pub(super) fn poll_preview(&mut self, ctx: &egui::Context) {
+        self.ensure_frame_source(ctx);
+        self.ensure_storyboard();
+        self.take_ready_board(ctx);
+        self.take_ready_frame(ctx);
+    }
+
+    /// Запускает поток точных кадров для текущего файла.
+    fn ensure_frame_source(&mut self, ctx: &egui::Context) {
+        if self.preview.source.is_some() {
             return;
         }
 
@@ -87,84 +150,133 @@ impl PithApp {
             return;
         };
 
-        if !self.worth_requesting(time) {
+        let ctx = ctx.clone();
+        self.preview.source = Some(FrameSource::spawn(&path, move || ctx.request_repaint()));
+    }
+
+    /// Запускает фоновую сборку мозаики.
+    ///
+    /// Длительность известна не сразу после открытия файла, поэтому
+    /// попытка повторяется каждый кадр, пока не выйдет.
+    fn ensure_storyboard(&mut self) {
+        if self.preview.board.is_some()
+            || self.preview.building.is_some()
+            || self.preview.board_failed
+        {
             return;
         }
 
-        // Пока движок сам перематывает, диск занят им: свой процесс
-        // подождёт, иначе оба будут мешать друг другу.
-        if self.scrub_in_flight {
+        let Some(path) = self.current_path.clone() else {
+            return;
+        };
+
+        let duration = self
+            .engine()
+            .map(|e| e.state().duration)
+            .unwrap_or_default();
+
+        if duration <= 0.0 {
             return;
         }
 
-        self.preview.requested = Some(time);
-        self.preview.last_request = Some(Instant::now());
-
+        let cache = self.data_paths.thumbnails();
         let (sender, receiver) = channel();
-        self.preview.result = Some(receiver);
+        self.preview.building = Some(receiver);
 
+        // Сборка идёт минуты на длинном фильме, а разбор готовой картинки
+        // стоит десятков миллисекунд — и то и другое мимо кадра интерфейса.
         std::thread::spawn(move || {
-            if let Some(png) = pith_fragments::grab_frame(&path, time) {
-                let _ = sender.send((time, png));
-            }
+            let board = pith_fragments::build_storyboard(&path, duration, &cache)
+                .and_then(|board| load_image(&board.path).map(|image| (board, image)));
+
+            let _ = sender.send(board);
         });
     }
 
-    /// Убирает предпросмотр: перемотка закончилась.
-    pub fn clear_preview(&mut self) {
-        self.preview.frame = None;
-        self.preview.requested = None;
-        self.preview.result = None;
-        self.preview.wanted = None;
-        self.preview.wanted_since = None;
+    /// Забирает собранную мозаику.
+    fn take_ready_board(&mut self, ctx: &egui::Context) {
+        let Some(receiver) = self.preview.building.as_ref() else {
+            return;
+        };
+
+        let Ok(result) = receiver.try_recv() else {
+            return;
+        };
+
+        self.preview.building = None;
+
+        let Some((layout, image)) = result else {
+            tracing::info!("мозаика миниатюр недоступна — остаются точные кадры");
+            self.preview.board_failed = true;
+            return;
+        };
+
+        self.preview.board = Some(Board {
+            texture: ctx.load_texture("предпросмотр_мозаика", image, texture_options()),
+            layout,
+        });
     }
 
-    /// Забирает готовый кадр и делает из него текстуру.
-    pub(super) fn poll_preview(&mut self, ctx: &egui::Context) {
-        self.send_pending_preview();
-
-        let Some(receiver) = self.preview.result.as_ref() else {
+    /// Забирает готовый точный кадр.
+    fn take_ready_frame(&mut self, ctx: &egui::Context) {
+        let Some((time, data)) = self.preview.source.as_ref().and_then(|s| s.take_frame()) else {
             return;
         };
 
-        let Ok((time, png)) = receiver.try_recv() else {
-            return;
-        };
-
-        self.preview.result = None;
-
-        let Ok(image) = image::load_from_memory(&png) else {
+        let Some(image) = decode_image(&data) else {
             tracing::warn!("кадр предпросмотра не разобрался");
             return;
         };
 
-        let rgba = image.to_rgba8();
-        let size = [rgba.width() as usize, rgba.height() as usize];
-        let pixels = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-
-        self.preview.frame = Some(PreviewFrame {
+        self.preview.frame = Some(ExactFrame {
             time,
-            texture: ctx.load_texture("preview", pixels, egui::TextureOptions::LINEAR),
+            texture: ctx.load_texture("предпросмотр_кадр", image, texture_options()),
         });
     }
+}
 
-    /// Стоит ли просить кадр для этого времени.
-    fn worth_requesting(&self, time: f64) -> bool {
-        // Прошлый запрос ещё в работе — дождёмся его.
-        if self.preview.result.is_some() {
-            return false;
+impl Board {
+    /// Клетка мозаики для этого места.
+    fn tile(&self, time: f64) -> PreviewImage<'_> {
+        let index = self.layout.tile_at(time);
+        let column = (index % self.layout.columns) as f32;
+        let row = (index / self.layout.columns) as f32;
+
+        let columns = self.layout.columns as f32;
+        let rows = self.layout.rows as f32;
+
+        let uv = egui::Rect::from_min_size(
+            egui::pos2(column / columns, row / rows),
+            egui::vec2(1.0 / columns, 1.0 / rows),
+        );
+
+        let size = self.texture.size_vec2() / egui::vec2(columns, rows);
+
+        PreviewImage {
+            texture: &self.texture,
+            uv,
+            size,
         }
-
-        if let Some(last) = self.preview.last_request
-            && last.elapsed().as_millis() < INTERVAL_MS
-        {
-            return false;
-        }
-
-        // Уже показываем кадр примерно того же места.
-        let shown = self.preview.frame.as_ref().map(|f| f.time);
-        let requested = self.preview.requested;
-
-        !matches!(shown.or(requested), Some(known) if (known - time).abs() < STEP)
     }
+}
+
+/// Сглаживание при уменьшении: миниатюра и так мелкая.
+fn texture_options() -> egui::TextureOptions {
+    egui::TextureOptions::LINEAR
+}
+
+/// Читает картинку с диска в вид, понятный egui.
+fn load_image(path: &std::path::Path) -> Option<egui::ColorImage> {
+    decode_image(&std::fs::read(path).ok()?)
+}
+
+fn decode_image(data: &[u8]) -> Option<egui::ColorImage> {
+    let image = image::load_from_memory(data).ok()?;
+    let rgba = image.to_rgba8();
+    let size = [rgba.width() as usize, rgba.height() as usize];
+
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        size,
+        rgba.as_raw(),
+    ))
 }

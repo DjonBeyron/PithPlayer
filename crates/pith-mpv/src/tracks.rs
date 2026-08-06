@@ -51,7 +51,10 @@ impl Track {
         format!("{title} {lang}").to_lowercase()
     }
 
-    /// Подпись для меню.
+    /// Подпись для меню: название дорожки и язык, как их записал файл.
+    ///
+    /// Своих слов здесь нет: движок не знает языка интерфейса, и пометки
+    /// вроде «форсированные» дописывает тот, кто рисует меню.
     pub fn label(&self) -> String {
         let mut parts = Vec::new();
 
@@ -61,12 +64,9 @@ impl Track {
         if let Some(lang) = &self.lang {
             parts.push(format!("[{lang}]"));
         }
-        if self.forced {
-            parts.push("форсир.".into());
-        }
 
         if parts.is_empty() {
-            format!("Дорожка {}", self.id)
+            format!("#{}", self.id)
         } else {
             parts.join(" ")
         }
@@ -217,14 +217,16 @@ mod tests {
     }
 
     #[test]
-    fn подпись_отмечает_форсированные() {
+    fn подпись_не_содержит_своих_слов() {
+        // Пометку о форсированной дорожке дописывает интерфейс: здесь
+        // остаётся только то, что записано в самом файле.
         let track = дорожка(Some("Signs"), Some("eng"), true);
-        assert!(track.label().contains("форсир."));
+        assert_eq!(track.label(), "Signs [eng]");
     }
 
     #[test]
     fn без_метаданных_подпись_содержит_номер() {
-        assert_eq!(дорожка(None, None, false).label(), "Дорожка 1");
+        assert_eq!(дорожка(None, None, false).label(), "#1");
     }
 
     #[test]

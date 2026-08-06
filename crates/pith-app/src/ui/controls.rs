@@ -5,30 +5,31 @@
 
 use crate::app::PithApp;
 use crate::theme;
-use crate::ui::{format_time, icons, metrics, timeline};
+use crate::tr;
+use crate::ui::{
+    format_time, format_time_padded, icons, metrics, preview, speed, time_label, timeline, volume,
+};
 
 /// Размер кнопок панели: одинаковый, чтобы строка не прыгала.
-const BUTTON_SIZE: [f32; 2] = [30.0, 24.0];
-/// Ширина полосы громкости.
-const VOLUME_WIDTH: f32 = 110.0;
-/// Минимальная ширина полосы перемотки.
-const MIN_TIMELINE_WIDTH: f32 = 120.0;
-/// Уже этой ширины громкость прячем: окно подогнано под вертикальное видео,
-/// и места хватает только на перемотку.
-const NARROW_WINDOW: f32 = 620.0;
+pub(super) const BUTTON_SIZE: [f32; 2] = [30.0, 24.0];
+
+/// Уже этой ширины полосу громкости прячем под динамик: окно подогнано
+/// под вертикальное видео, и места хватает только на перемотку.
+///
+/// Считается по строке целиком: кнопки, обе надписи со временем, полоса
+/// громкости и перемотка в её наименьшей ширине.
+const NARROW_WINDOW: f32 = 760.0;
+
+/// Уже этой ширины в строке остаются только пауза, закладка, звук и полоса
+/// перемотки. Уходят и надписи со временем: в такой ширине они отнимают
+/// у полосы больше, чем сообщают сами.
+///
+/// Остальное — открытие файла, повтор, скорость, поиск, полный экран —
+/// доступно из контекстного меню по правому щелчку. Полоса перемотки нужнее
+/// кнопок: без неё плеером не пользуются вовсе, а её место занимали бы они.
+const TINY_WINDOW: f32 = 540.0;
 /// Отступ содержимого панели от краёв окна — одинаковый слева и справа.
 const SIDE_MARGIN: f32 = 12.0;
-/// Ширина кадра предпросмотра.
-const PREVIEW_WIDTH: f32 = 160.0;
-/// Высота места под кадр.
-///
-/// Место занимается всегда, даже пока кадра нет: иначе окно меняет
-/// размер под каждый новый кадр и мигает под курсором.
-const PREVIEW_HEIGHT: f32 = 90.0;
-/// Отступ содержимого внутри окна предпросмотра.
-const PREVIEW_PADDING: i8 = 4;
-/// Насколько окно предпросмотра поднято над полосой.
-const PREVIEW_GAP: f32 = 10.0;
 /// Через сколько секунд прятать панель в полноэкранном режиме.
 const HIDE_AFTER_SECONDS: f64 = 1.5;
 /// Высота полосы у нижнего края, которой панель вызывается обратно.
@@ -104,38 +105,74 @@ fn is_visible(app: &PithApp, ctx: &egui::Context) -> bool {
 }
 
 fn show_row(app: &mut PithApp, ui: &mut egui::Ui, inner_width: f32) {
-    ui.horizontal(|ui| {
-        show_open_button(app, ui);
-        show_play_button(app, ui);
-        show_time_label(app, ui);
+    // В узком окне (подогнанном под вертикальное видео) полосе громкости
+    // места не остаётся — уступаем его перемотке, а саму громкость
+    // прячем под динамик. В совсем маленьком убираем и кнопки.
+    let compact_volume = inner_width < NARROW_WINDOW;
+    let tiny = inner_width < TINY_WINDOW;
 
-        // В узком окне (подогнанном под вертикальное видео) громкости места
-        // не остаётся — уступаем его полосе перемотки.
-        let with_volume = inner_width >= NARROW_WINDOW;
+    ui.horizontal(|ui| {
+        if !tiny {
+            show_open_button(app, ui);
+        }
+
+        show_play_button(app, ui);
+
+        if !tiny {
+            show_loop_button(app, ui);
+            speed::show(app, ui);
+            show_position(app, ui);
+        }
 
         // Правый край выкладываем справа налево: тогда последний элемент
         // упирается ровно в отступ панели, и края выходят одинаковыми.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if with_volume {
-                show_volume(app, ui);
+            volume::show(app, ui, compact_volume);
+
+            if !tiny {
+                show_fullscreen_button(app, ui);
+                show_crop_button(app, ui);
+                show_search_button(app, ui);
             }
 
-            show_fullscreen_button(app, ui);
-            show_crop_button(app, ui);
-            show_speed(app, ui);
+            // Закладка ставится по ходу просмотра, и кнопка стоит сразу
+            // за полосой перемотки: рука и так у неё.
+            show_bookmark_button(app, ui);
 
-            // Полоса перемотки забирает всё, что осталось между краями.
-            let width =
-                (ui.available_width() - ui.spacing().item_spacing.x).max(MIN_TIMELINE_WIDTH);
+            // Длительность — у правого конца полосы: слева время идёт
+            // вперёд, справа стоит предел, до которого оно дойдёт.
+            if !tiny {
+                show_duration(app, ui);
+            }
+
+            // Полоса перемотки забирает ровно то, что осталось между
+            // краями, и ни точкой больше. Заданная снизу ширина в тесном
+            // окне не помещалась, и полоса наползала на надпись со
+            // временем — время оказывалось под ней.
+            let width = (ui.available_width() - ui.spacing().item_spacing.x).max(0.0);
             show_timeline(app, ui, width);
         });
     });
 }
 
-/// Кнопка открытия файла.
+/// Кнопка открытия файла. По правому щелчку — история открытых.
 fn show_open_button(app: &mut PithApp, ui: &mut egui::Ui) {
-    if icon_button(ui, icons::OPEN, "Открыть файл") {
+    let response = ui
+        .add_sized(
+            BUTTON_SIZE,
+            egui::Button::new(icons::OPEN.text().color(theme::TEXT_PRIMARY)).frame(false),
+        )
+        .on_hover_text(tr!(
+            "Открыть файл. Правым щелчком — история открытых",
+            "Open file. Right-click for recent files"
+        ));
+
+    if crate::ui::clicked(&response) {
         app.open_file_dialog();
+    }
+
+    if response.secondary_clicked() {
+        app.open_history();
     }
 }
 
@@ -147,17 +184,89 @@ fn show_play_button(app: &mut PithApp, ui: &mut egui::Ui) {
     let paused = app.engine().map(|e| e.state().paused).unwrap_or(true);
     let icon = if paused { icons::PLAY } else { icons::PAUSE };
 
-    if icon_button(ui, icon, "Пауза / продолжить (пробел)") {
+    if icon_button(
+        ui,
+        icon,
+        tr!("Пауза / продолжить (пробел)", "Pause / play (space)"),
+    ) {
         app.toggle_pause();
+    }
+}
+
+/// Повтор файла по кругу.
+///
+/// Стоит рядом с паузой: включают его обычно там же, где разбирают
+/// кусок по многу раз.
+fn show_loop_button(app: &mut PithApp, ui: &mut egui::Ui) {
+    let looping = app.is_looping();
+
+    let hint = if looping {
+        tr!("Не повторять файл", "Stop looping")
+    } else {
+        tr!("Повторять файл по кругу", "Loop file")
+    };
+
+    let color = if looping {
+        theme::PANEL_ACCENT
+    } else {
+        theme::TEXT_PRIMARY
+    };
+
+    let response = ui
+        .add_sized(
+            BUTTON_SIZE,
+            egui::Button::new(icons::LOOP.text().color(color)).frame(false),
+        )
+        .on_hover_text(hint);
+
+    if crate::ui::clicked(&response) {
+        app.toggle_looping();
+    }
+}
+
+/// Закладка на текущем месте — то же, что клавиша T.
+///
+/// Клавишу знает не всякий, а метку по ходу просмотра ставят часто:
+/// из неё потом вырезается отрезок.
+fn show_bookmark_button(app: &mut PithApp, ui: &mut egui::Ui) {
+    if icon_button(
+        ui,
+        icons::ADD,
+        tr!(
+            "Поставить закладку на текущем месте (T)",
+            "Add bookmark at current position (T)"
+        ),
+    ) {
+        app.add_bookmark_here();
+    }
+}
+
+/// Поиск по субтитрам — рядом с закладкой.
+///
+/// Найденную реплику отмечают закладкой прямо из окна поиска, поэтому
+/// кнопки стоят вместе.
+fn show_search_button(app: &mut PithApp, ui: &mut egui::Ui) {
+    if icon_button(
+        ui,
+        icons::SEARCH,
+        tr!("Поиск по субтитрам (Ctrl+F)", "Search subtitles (Ctrl+F)"),
+    ) {
+        app.open_search();
     }
 }
 
 /// Кнопка полноэкранного режима.
 fn show_fullscreen_button(app: &mut PithApp, ui: &mut egui::Ui) {
     let (icon, hint) = if app.is_fullscreen() {
-        (icons::RESTORE, "Выйти из полного экрана (F)")
+        (
+            icons::RESTORE,
+            tr!("Выйти из полного экрана (F)", "Leave fullscreen (F)"),
+        )
     } else {
-        (icons::FULLSCREEN, "Во весь экран (F)")
+        (
+            icons::FULLSCREEN,
+            tr!("Во весь экран (F)", "Fullscreen (F)"),
+        )
     };
 
     if icon_button(ui, icon, hint) {
@@ -176,16 +285,22 @@ fn show_crop_button(app: &mut PithApp, ui: &mut egui::Ui) {
 
     if app.is_detecting_crop() {
         ui.add_sized(BUTTON_SIZE, egui::Spinner::new())
-            .on_hover_text("Ищу чёрные поля…");
+            .on_hover_text(tr!("Ищу чёрные поля…", "Looking for black bars…"));
         return;
     }
 
     let (icon, hint) = if app.is_cropped() {
-        (icons::FIT_ORIGINAL, "Вернуть чёрные поля")
+        (
+            icons::FIT_ORIGINAL,
+            tr!("Вернуть чёрные поля", "Restore black bars"),
+        )
     } else {
         (
             icons::FIT_SCREEN,
-            "Растянуть на весь экран: FFmpeg найдёт чёрные поля и уберёт их",
+            tr!(
+                "Растянуть на весь экран: FFmpeg найдёт чёрные поля и уберёт их",
+                "Fill the screen: FFmpeg finds the black bars and crops them"
+            ),
         )
     };
 
@@ -195,40 +310,40 @@ fn show_crop_button(app: &mut PithApp, ui: &mut egui::Ui) {
 }
 
 /// Кнопка со значком: одинаковый размер, без рамки поверх видео.
-fn icon_button(ui: &mut egui::Ui, icon: icons::Icon, hint: &str) -> bool {
-    ui.add_sized(
-        BUTTON_SIZE,
-        egui::Button::new(icon.text().color(theme::TEXT_PRIMARY)).frame(false),
-    )
-    .on_hover_text(hint)
-    .clicked()
+pub(super) fn icon_button(ui: &mut egui::Ui, icon: icons::Icon, hint: &str) -> bool {
+    let response = ui
+        .add_sized(
+            BUTTON_SIZE,
+            egui::Button::new(icon.text().color(theme::TEXT_PRIMARY)).frame(false),
+        )
+        .on_hover_text(hint);
+
+    crate::ui::clicked(&response)
 }
 
-/// Вписывает картинку в отведённое место, сохраняя пропорции.
-fn fit_inside(area: egui::Rect, image: egui::Vec2) -> egui::Rect {
-    if image.x <= 0.0 || image.y <= 0.0 {
-        return area;
-    }
+/// Текущее место — слева от полосы перемотки.
+///
+/// Позиция дополняется до вида длительности: иначе надпись росла бы на
+/// каждом лишнем разряде, а полоса перемотки, которая занимает весь
+/// остаток строки, на столько же укорачивалась бы прямо во время просмотра.
+fn show_position(app: &PithApp, ui: &mut egui::Ui) {
+    let duration = app.engine().map(|e| e.state().duration).unwrap_or_default();
 
-    let scale = (area.width() / image.x).min(area.height() / image.y);
-    egui::Rect::from_center_size(area.center(), image * scale)
+    // То же место, что показывает ползунок: пока его тянут, mpv отдаёт
+    // старую позицию, и надпись со временем застывала, хотя полоса уже
+    // ушла в другой конец фильма.
+    let position = app.display_position();
+
+    time_label::show(ui, &format_time_padded(position, duration))
+        .on_hover_text(tr!("Сколько уже прошло", "Time played"));
 }
 
-fn show_time_label(app: &PithApp, ui: &mut egui::Ui) {
-    let (position, duration) = app
-        .engine()
-        .map(|e| (e.state().position, e.state().duration))
-        .unwrap_or((0.0, 0.0));
+/// Длительность файла — справа от полосы перемотки.
+fn show_duration(app: &PithApp, ui: &mut egui::Ui) {
+    let duration = app.engine().map(|e| e.state().duration).unwrap_or_default();
 
-    ui.label(
-        egui::RichText::new(format!(
-            "{} / {}",
-            format_time(position),
-            format_time(duration)
-        ))
-        .color(theme::TEXT_PRIMARY)
-        .monospace(),
-    );
+    time_label::show(ui, &format_time(duration))
+        .on_hover_text(tr!("Длительность файла", "File duration"));
 }
 
 fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
@@ -257,120 +372,8 @@ fn show_timeline(app: &mut PithApp, ui: &mut egui::Ui, width: f32) {
     match response.hovered_time {
         Some(time) => {
             app.request_preview(time);
-            show_preview(app, ui.ctx(), &response, duration);
+            preview::show(app, ui.ctx(), &response, duration);
         }
         None => app.clear_preview(),
     }
 }
-
-/// Окно предпросмотра над полосой перемотки.
-fn show_preview(
-    app: &PithApp,
-    ctx: &egui::Context,
-    response: &timeline::TimelineResponse,
-    duration: f64,
-) {
-    let (Some(x), Some(time)) = (response.pointer_x, response.hovered_time) else {
-        return;
-    };
-
-    let position = egui::pos2(x, response.track_top - PREVIEW_GAP);
-
-    egui::Area::new(egui::Id::new("timeline_preview"))
-        .order(egui::Order::Tooltip)
-        .fixed_pos(position)
-        .pivot(egui::Align2::CENTER_BOTTOM)
-        .interactable(false)
-        .show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(theme::WINDOW_BG.gamma_multiply(0.96))
-                .inner_margin(PREVIEW_PADDING)
-                .corner_radius(4.0)
-                .show(ui, |ui| {
-                    // Размер задан жёстко: иначе окно пересчитывается под
-                    // каждое движение мыши, и подложка успевает мигнуть.
-                    ui.set_width(PREVIEW_WIDTH);
-                    ui.spacing_mut().item_spacing.y = 2.0;
-
-                    let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(PREVIEW_WIDTH, PREVIEW_HEIGHT),
-                        egui::Sense::hover(),
-                    );
-
-                    // Кадр появляется не мгновенно — FFmpeg нужно время.
-                    // Пока его нет, место под него уже занято, и окно
-                    // не прыгает, когда кадр приходит.
-                    if let Some(frame) = app.preview_frame() {
-                        egui::Image::new(&frame.texture)
-                            .corner_radius(3.0)
-                            // Вписываем по пропорциям: у широкого кадра
-                            // они не 16:9, и растянутая картинка врала бы
-                            // о том, что в этом месте фильма.
-                            .paint_at(ui, fit_inside(rect, frame.texture.size_vec2()));
-                    }
-
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{} / {}",
-                                format_time(time),
-                                format_time(duration)
-                            ))
-                            .color(theme::TEXT_PRIMARY)
-                            .monospace()
-                            .size(12.0),
-                        );
-                    });
-                });
-        });
-}
-
-/// Скорость воспроизведения. Показывается, только когда отличается от обычной.
-fn show_speed(app: &mut PithApp, ui: &mut egui::Ui) {
-    let speed = app.engine().map(|e| e.state().speed).unwrap_or(1.0);
-
-    if (speed - 1.0).abs() < f64::EPSILON {
-        return;
-    }
-
-    let label = ui.label(
-        egui::RichText::new(format!("{speed:.2}×"))
-            .color(theme::ACCENT)
-            .monospace(),
-    );
-
-    if label
-        .on_hover_text("Сбросить скорость")
-        .interact(egui::Sense::click())
-        .clicked()
-    {
-        app.reset_speed();
-    }
-}
-
-/// Громкость — такой же полосой, как перемотка.
-///
-/// Выкладывается справа налево, поэтому полоса идёт первой, а значок
-/// после неё оказывается слева.
-fn show_volume(app: &mut PithApp, ui: &mut egui::Ui) {
-    let Some(engine) = app.engine() else {
-        return;
-    };
-
-    let volume = engine.state().volume;
-
-    if let Some(chosen) = timeline::volume_bar(ui, volume, VOLUME_WIDTH, MAX_VOLUME) {
-        app.set_volume(chosen);
-    }
-
-    let icon = if volume == 0 {
-        icons::MUTE
-    } else {
-        icons::VOLUME
-    };
-    ui.label(icon.text().color(theme::TEXT_SECONDARY))
-        .on_hover_text(format!("Громкость: {volume}%"));
-}
-
-/// Предел громкости — тот же, что у движка.
-const MAX_VOLUME: i64 = 150;

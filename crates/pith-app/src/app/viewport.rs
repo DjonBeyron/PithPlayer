@@ -40,15 +40,6 @@ impl PithApp {
             return;
         }
 
-        // Первый файл после запуска не трогает окно, восстановленное из
-        // настроек: пользователь закрыл плеер с этим размером и ждёт его же.
-        // Следующие файлы подгоняются как обычно.
-        if self.restored_geometry_pending {
-            self.restored_geometry_pending = false;
-            tracing::debug!("оставляю окно таким, каким его закрыли");
-            return;
-        }
-
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
@@ -56,6 +47,16 @@ impl PithApp {
         let state = engine.state();
         let monitor = ctx.input(|i| i.viewport().monitor_size);
         let available = monitor.unwrap_or_else(|| ctx.input(|i| i.viewport_rect().size()));
+
+        // Первый файл после запуска сохраняет размер окна, восстановленный
+        // из настроек: пользователь закрыл плеер таким и ждёт такого же.
+        // Но форму под кадр правим и здесь — иначе видео другой формы
+        // открывается с чёрными полями по краям.
+        if self.restored_geometry_pending {
+            self.restored_geometry_pending = false;
+            self.reshape_restored_window(ctx, available);
+            return;
+        }
 
         let Some(size) = window::fit_size(state.display_width, state.display_height, available)
         else {
@@ -78,6 +79,30 @@ impl PithApp {
             let position = ((monitor - size) / 2.0).max(egui::Vec2::ZERO);
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position.to_pos2()));
         }
+    }
+
+    /// Правит форму восстановленного окна под кадр, не меняя его величины.
+    fn reshape_restored_window(&mut self, ctx: &egui::Context, available: egui::Vec2) {
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+
+        let state = engine.state();
+        let current = ctx.input(|i| i.viewport_rect().size());
+
+        let Some(size) = window::reshape(
+            current,
+            state.display_width,
+            state.display_height,
+            available,
+        ) else {
+            tracing::debug!("оставляю окно таким, каким его закрыли");
+            return;
+        };
+
+        tracing::debug!(?current, ?size, "правлю форму окна под кадр");
+        self.expected_window_size = Some(size);
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
     }
 
     /// Запоминает момент последнего движения мыши.

@@ -2,15 +2,22 @@
 //!
 //! Порт `ModernContextMenu` из v4: выбор дорожек, скорость, полный экран.
 
-use pith_mpv::TrackKind;
-
 use crate::app::PithApp;
+use crate::theme;
+use crate::tr;
+use crate::ui::menu_tracks;
 
 /// Готовые значения скорости.
 const SPEED_PRESETS: [f64; 6] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
 /// Минимальная ширина меню.
 const MENU_WIDTH: f32 = 220.0;
+
+/// Отступ между группами пунктов.
+///
+/// Заметный: без него подписи групп липли к пунктам соседней, и меню
+/// читалось сплошным списком.
+const GROUP_GAP: f32 = 12.0;
 
 /// Пункты меню.
 ///
@@ -21,45 +28,91 @@ const MENU_WIDTH: f32 = 220.0;
 pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
     ui.set_min_width(MENU_WIDTH);
 
-    if ui.button("Открыть файл…").clicked() {
+    // Меню разбито на группы с подписями: пункты копились по мере
+    // переноса возможностей из v4 и лежали вперемешку — дорожки рядом
+    // с ассоциациями файлов, полный экран между замерами и нарезкой.
+    show_group(ui, tr!("Файл", "File"));
+    show_file_items(app, ui);
+
+    show_group(ui, tr!("Просмотр", "Playback"));
+    show_playback_items(app, ui);
+
+    show_group(ui, tr!("Дорожки", "Tracks"));
+    menu_tracks::show_audio_tracks(app, ui);
+    menu_tracks::show_subtitle_tracks(app, ui);
+    menu_tracks::show_audio_devices(app, ui);
+
+    show_group(ui, tr!("Отрезки", "Fragments"));
+    show_fragment_items(app, ui);
+
+    show_group(ui, tr!("Прочее", "Other"));
+    show_service_items(app, ui);
+}
+
+/// Подпись группы и отступ перед ней.
+///
+/// Отступ заметный: без него подписи липли к пунктам соседней группы,
+/// и меню читалось сплошным списком.
+fn show_group(ui: &mut egui::Ui, title: &str) {
+    if ui.min_rect().height() > 0.0 {
+        ui.add_space(GROUP_GAP);
+    }
+
+    ui.label(
+        egui::RichText::new(title.to_uppercase())
+            .color(theme::PANEL_MUTED)
+            .size(10.0)
+            .strong(),
+    );
+
+    ui.add_space(2.0);
+}
+
+fn show_file_items(app: &mut PithApp, ui: &mut egui::Ui) {
+    if ui.button(tr!("Открыть файл…", "Open file…")).clicked() {
         app.open_file_dialog();
         ui.close();
     }
 
-    if ui.button("Поиск по субтитрам…").clicked() {
+    if ui.button(tr!("История файлов…", "Recent files…")).clicked() {
+        app.open_history();
+        ui.close();
+    }
+
+    if ui
+        .button(tr!("Поиск по субтитрам…", "Search subtitles…"))
+        .clicked()
+    {
         app.open_search();
         ui.close();
     }
+}
 
-    // Панель и так выезжает при наведении на правый край; через меню её
-    // можно закрепить, чтобы не пряталась.
-    let pin_label = if app.bookmarks_panel_pinned() {
-        "Открепить отрезки"
-    } else {
-        "Закрепить отрезки"
-    };
-
-    if ui.button(pin_label).clicked() {
-        app.toggle_bookmarks_panel();
+fn show_playback_items(app: &mut PithApp, ui: &mut egui::Ui) {
+    if ui.button(tr!("Полный экран", "Fullscreen")).clicked() {
+        app.toggle_fullscreen(ui.ctx());
         ui.close();
     }
 
-    show_bookmark_lists(app, ui);
+    // Повтор есть и кнопкой в панели, но в маленьком окне её там нет:
+    // единственного способа включить повтор остаться не должно.
+    let looping = if app.is_looping() {
+        tr!("Не повторять файл", "Stop looping")
+    } else {
+        tr!("Повторять файл по кругу", "Loop file")
+    };
 
-    ui.separator();
+    if ui.button(looping).clicked() {
+        app.toggle_looping();
+        ui.close();
+    }
 
-    show_audio_tracks(app, ui);
-    show_subtitle_tracks(app, ui);
-    show_audio_devices(app, ui);
     show_speed(app, ui);
 
-    ui.separator();
-
-    let subtitles_visible = app.settings().subtitles_visible;
-    let label = if subtitles_visible {
-        "Скрыть субтитры"
+    let label = if app.settings().subtitles_visible {
+        tr!("Скрыть субтитры", "Hide subtitles")
     } else {
-        "Показать субтитры"
+        tr!("Показать субтитры", "Show subtitles")
     };
 
     if ui.button(label).clicked() {
@@ -67,15 +120,51 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
-    if ui.button("Полный экран").clicked() {
-        app.toggle_fullscreen(ui.ctx());
+    if ui
+        .button(tr!("Вид субтитров…", "Subtitle look…"))
+        .on_hover_text(tr!(
+            "Цвет и начертание каждого слоя",
+            "Colour and weight of each layer"
+        ))
+        .clicked()
+    {
+        app.open_subtitle_style();
+        ui.close();
+    }
+}
+
+fn show_fragment_items(app: &mut PithApp, ui: &mut egui::Ui) {
+    show_bookmark_lists(app, ui);
+
+    // Панель вызывается язычком у правого края; через меню её можно
+    // закрепить, чтобы не закрывалась нажатием мимо.
+    let pin_label = if app.bookmarks_panel_pinned() {
+        tr!("Открепить панель отрезков", "Unpin fragments panel")
+    } else {
+        tr!("Закрепить панель отрезков", "Pin fragments panel")
+    };
+
+    if ui.button(pin_label).clicked() {
+        app.toggle_bookmarks_panel();
         ui.close();
     }
 
+    if ui
+        .button(tr!("Настройки нарезки…", "Fragment settings…"))
+        .clicked()
+    {
+        app.open_fragment_settings();
+        ui.close();
+    }
+}
+
+fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
+    show_languages(app, ui);
+
     let metrics_label = if app.show_metrics() {
-        "Скрыть замеры"
+        tr!("Скрыть замеры", "Hide metrics")
     } else {
-        "Показать замеры"
+        tr!("Показать замеры", "Show metrics")
     };
 
     if ui.button(metrics_label).clicked() {
@@ -83,24 +172,42 @@ pub fn show_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
-    ui.separator();
-
-    if ui.button("Настройки нарезки…").clicked() {
-        app.open_fragment_settings();
-        ui.close();
-    }
-
     // Ассоциации меняют настройки системы, поэтому пункт только открывает
     // подтверждение, а не выполняет действие сразу.
     let label = if app.file_types_registered() {
-        "Отвязать видеофайлы…"
+        tr!("Отвязать видеофайлы…", "Unlink video files…")
     } else {
-        "Связать видеофайлы с плеером…"
+        tr!(
+            "Связать видеофайлы с плеером…",
+            "Set as default video player…"
+        )
     };
 
     if ui.button(label).clicked() {
         app.ask_file_types();
         ui.close();
+    }
+}
+
+/// Язык интерфейса.
+///
+/// Названия языков не переводятся: своё слово в списке ищут глазами,
+/// не читая остального меню.
+fn show_languages(app: &mut PithApp, ui: &mut egui::Ui) {
+    let current = app.language();
+    let mut chosen = None;
+
+    ui.menu_button(tr!("Язык", "Language"), |ui| {
+        for language in pith_store::Language::ALL {
+            if ui.radio(language == current, language.label()).clicked() {
+                chosen = Some(language);
+                ui.close();
+            }
+        }
+    });
+
+    if let Some(language) = chosen {
+        app.set_language(language);
     }
 }
 
@@ -114,7 +221,12 @@ fn show_bookmark_lists(app: &mut PithApp, ui: &mut egui::Ui) {
     let mut chosen = None;
     let mut create = false;
 
-    ui.menu_button(format!("Список отрезков: {active}"), |ui| {
+    let title = tr!(
+        format!("Список отрезков: {active}"),
+        format!("Fragment list: {active}")
+    );
+
+    ui.menu_button(title, |ui| {
         for name in &names {
             if ui.radio(*name == active, name).clicked() {
                 chosen = Some(name.clone());
@@ -124,7 +236,7 @@ fn show_bookmark_lists(app: &mut PithApp, ui: &mut egui::Ui) {
 
         ui.separator();
 
-        if ui.button("Новый список…").clicked() {
+        if ui.button(tr!("Новый список…", "New list…")).clicked() {
             create = true;
             ui.close();
         }
@@ -138,131 +250,16 @@ fn show_bookmark_lists(app: &mut PithApp, ui: &mut egui::Ui) {
     }
 }
 
-fn show_audio_tracks(app: &mut PithApp, ui: &mut egui::Ui) {
-    let tracks: Vec<_> = app
-        .tracks()
-        .iter()
-        .filter(|t| t.kind == TrackKind::Audio)
-        .map(|t| (t.id, t.label()))
-        .collect();
-
-    if tracks.is_empty() {
-        return;
-    }
-
-    let current = app.selected_tracks().audio;
-    let mut chosen = None;
-
-    ui.menu_button("Аудиодорожка", |ui| {
-        for (id, label) in &tracks {
-            if ui.radio(current == Some(*id), label).clicked() {
-                chosen = Some(Some(*id));
-                ui.close();
-            }
-        }
-    });
-
-    if let Some(id) = chosen {
-        app.choose_audio_track(id);
-    }
-}
-
-fn show_subtitle_tracks(app: &mut PithApp, ui: &mut egui::Ui) {
-    let tracks: Vec<_> = app
-        .tracks()
-        .iter()
-        .filter(|t| t.kind == TrackKind::Subtitle)
-        .map(|t| (t.id, t.label()))
-        .collect();
-
-    if tracks.is_empty() {
-        return;
-    }
-
-    let selected = app.selected_tracks();
-    let mut main_choice = None;
-    let mut secondary_choice = None;
-
-    ui.menu_button("Субтитры", |ui| {
-        if ui.radio(selected.subtitle.is_none(), "Выключены").clicked() {
-            main_choice = Some(None);
-            ui.close();
-        }
-
-        for (id, label) in &tracks {
-            if ui.radio(selected.subtitle == Some(*id), label).clicked() {
-                main_choice = Some(Some(*id));
-                ui.close();
-            }
-        }
-    });
-
-    // Вторые субтитры mpv показывает одновременно с основными.
-    ui.menu_button("Вторые субтитры", |ui| {
-        if ui
-            .radio(selected.secondary_subtitle.is_none(), "Выключены")
-            .clicked()
-        {
-            secondary_choice = Some(None);
-            ui.close();
-        }
-
-        for (id, label) in &tracks {
-            if ui
-                .radio(selected.secondary_subtitle == Some(*id), label)
-                .clicked()
-            {
-                secondary_choice = Some(Some(*id));
-                ui.close();
-            }
-        }
-    });
-
-    if let Some(id) = main_choice {
-        app.choose_subtitle_track(id);
-    }
-    if let Some(id) = secondary_choice {
-        app.choose_secondary_subtitle_track(id);
-    }
-}
-
-/// Куда выводить звук. Переключается без перезапуска плеера.
-fn show_audio_devices(app: &mut PithApp, ui: &mut egui::Ui) {
-    let devices = app.audio_devices();
-    if devices.is_empty() {
-        return;
-    }
-
-    let current = app.current_audio_device();
-    let mut chosen = None;
-
-    ui.menu_button("Вывод звука", |ui| {
-        for device in &devices {
-            // Автоматический выбор mpv отдаёт первым — оставляем его наверху
-            // и подписываем понятнее, чем «Autoselect device».
-            let label = if device.is_auto() {
-                "Как в системе".to_string()
-            } else {
-                device.label()
-            };
-
-            if ui.radio(device.name == current, label).clicked() {
-                chosen = Some(device.name.clone());
-                ui.close();
-            }
-        }
-    });
-
-    if let Some(name) = chosen {
-        app.choose_audio_device(&name);
-    }
-}
-
 fn show_speed(app: &mut PithApp, ui: &mut egui::Ui) {
     let current = app.engine().map(|e| e.state().speed).unwrap_or(1.0);
     let mut chosen = None;
 
-    ui.menu_button(format!("Скорость: {current:.2}×"), |ui| {
+    let title = tr!(
+        format!("Скорость: {current:.2}×"),
+        format!("Speed: {current:.2}×")
+    );
+
+    ui.menu_button(title, |ui| {
         for speed in SPEED_PRESETS {
             let active = (current - speed).abs() < 0.01;
             if ui.radio(active, format!("{speed:.2}×")).clicked() {

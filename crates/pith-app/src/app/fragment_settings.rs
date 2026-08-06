@@ -71,7 +71,10 @@ impl PithApp {
             звук_в_aac = dialog.audio_aac,
             "настройки нарезки сохранены"
         );
-        self.show_notice("Настройки нарезки сохранены");
+        self.show_notice(crate::tr!(
+            "Настройки нарезки сохранены",
+            "Fragment settings saved"
+        ));
     }
 
     /// Доступна ли нарезка: без FFmpeg настройки бесполезны.
@@ -79,7 +82,10 @@ impl PithApp {
         if self.can_extract() {
             None
         } else {
-            Some("Рядом с плеером нет ffmpeg.exe — нарезка недоступна")
+            Some(crate::tr!(
+                "Рядом с плеером нет ffmpeg.exe — нарезка недоступна",
+                "No ffmpeg.exe next to the player — cutting is unavailable"
+            ))
         }
     }
 }

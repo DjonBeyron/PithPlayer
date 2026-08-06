@@ -76,7 +76,7 @@ impl PithApp {
 
         match text {
             Some(text) => self.copy_text_to_clipboard(&text),
-            None => self.show_notice("Субтитров сейчас нет"),
+            None => self.show_notice(crate::tr!("Субтитров сейчас нет", "No subtitles right now")),
         }
     }
 
@@ -90,11 +90,11 @@ impl PithApp {
         match arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())) {
             Ok(()) => {
                 tracing::debug!(длина = text.len(), "реплика скопирована");
-                self.show_notice("Скопировано");
+                self.show_notice(crate::tr!("Скопировано", "Copied"));
             }
             Err(e) => {
                 tracing::warn!(error = %e, "не удалось скопировать в буфер обмена");
-                self.show_notice("Не удалось скопировать");
+                self.show_notice(crate::tr!("Не удалось скопировать", "Could not copy"));
             }
         }
     }

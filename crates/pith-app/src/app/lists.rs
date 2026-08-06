@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use pith_store::{ListError, VideoBookmarks};
+use pith_store::VideoBookmarks;
 
 use super::PithApp;
 
@@ -42,8 +42,8 @@ pub struct ListDialog {
 impl ListDialog {
     pub fn title(&self) -> &'static str {
         match self.kind {
-            ListDialogKind::Create => "Новый список отрезков",
-            ListDialogKind::Edit { .. } => "Настройки списка",
+            ListDialogKind::Create => crate::tr!("Новый список отрезков", "New fragment list"),
+            ListDialogKind::Edit { .. } => crate::tr!("Настройки списка", "List settings"),
         }
     }
 }
@@ -85,6 +85,91 @@ impl PithApp {
         }
     }
 
+    /// Пределы длительности и отступа, секунды.
+    ///
+    /// Те же, что и в диалоге настройки списка: правка в панели не должна
+    /// пускать значения, которых диалог не примет.
+    pub const MAX_DURATION_SEC: u32 = 600;
+    pub const MAX_BUFFER_SEC: u32 = 120;
+
+    /// Меняет длительность и отступ активного списка.
+    ///
+    /// Правится прямо в панели: эти два числа подбираются по ходу работы,
+    /// и ради каждой правки открывать диалог настроек утомительно.
+    pub fn set_active_list_timing(&mut self, duration_sec: u32, buffer_sec: u32) {
+        let (duration_sec, buffer_sec) = (
+            duration_sec.clamp(1, Self::MAX_DURATION_SEC),
+            buffer_sec.min(Self::MAX_BUFFER_SEC),
+        );
+
+        let changed = self.update_active_list(|list| {
+            if list.duration_sec == duration_sec && list.buffer_sec == buffer_sec {
+                return false;
+            }
+
+            list.duration_sec = duration_sec;
+            list.buffer_sec = buffer_sec;
+            true
+        });
+
+        if changed {
+            tracing::debug!(duration_sec, buffer_sec, "параметры списка изменены");
+        }
+    }
+
+    /// Задаёт папку вывода активного списка.
+    ///
+    /// `None` возвращает список к общей папке из настроек.
+    pub fn set_active_list_output_dir(&mut self, dir: Option<std::path::PathBuf>) {
+        let changed = self.update_active_list(|list| {
+            if list.output_dir == dir {
+                return false;
+            }
+
+            list.output_dir = dir.clone();
+            true
+        });
+
+        if changed {
+            tracing::debug!("папка вывода списка изменена");
+        }
+    }
+
+    /// Спрашивает папку вывода и запоминает её за активным списком.
+    pub fn choose_active_list_output_dir(&mut self) {
+        let current = self.fragments_output_dir();
+
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(dir) = current {
+            dialog = dialog.set_directory(dir);
+        }
+
+        if let Some(dir) = dialog.pick_folder() {
+            self.set_active_list_output_dir(Some(dir));
+        }
+    }
+
+    /// Правит активный список и сохраняет закладки, если что-то изменилось.
+    fn update_active_list(
+        &mut self,
+        edit: impl FnOnce(&mut pith_store::BookmarkList) -> bool,
+    ) -> bool {
+        let Some(video) = self.current_bookmarks_mut() else {
+            return false;
+        };
+
+        let Some(list) = video.active_mut() else {
+            return false;
+        };
+
+        if !edit(list) {
+            return false;
+        }
+
+        self.bookmarks.save();
+        true
+    }
+
     /// Переключает активный список. Воспроизведение не трогается.
     pub fn switch_list(&mut self, name: &str) {
         let name = name.to_string();
@@ -105,7 +190,10 @@ impl PithApp {
         });
 
         if let Some(name) = created {
-            self.show_notice(&format!("Создан список «{name}»"));
+            self.show_notice(&crate::tr!(
+                format!("Создан список «{name}»"),
+                format!("List «{name}» created")
+            ));
         }
     }
 
@@ -149,7 +237,10 @@ impl PithApp {
 
         self.bookmarks.save();
         tracing::info!(закладок = removed, "список очищен");
-        self.show_notice(&format!("Убрано закладок: {removed}"));
+        self.show_notice(&crate::tr!(
+            format!("Убрано закладок: {removed}"),
+            format!("Bookmarks removed: {removed}")
+        ));
     }
 
     /// Удаляет активный список вместе с его закладками.
@@ -166,7 +257,10 @@ impl PithApp {
         });
 
         if removed {
-            self.show_notice(&format!("Список «{active}» удалён"));
+            self.show_notice(&crate::tr!(
+                format!("Список «{active}» удалён"),
+                format!("List «{active}» deleted")
+            ));
         }
     }
 
@@ -182,145 +276,10 @@ impl PithApp {
         });
 
         if moved {
-            self.show_notice(&format!("Перенесено в «{target}»"));
-        }
-    }
-
-    pub fn list_dialog(&self) -> Option<&ListDialog> {
-        self.list_dialog.as_ref()
-    }
-
-    /// Поля диалога для правки интерфейсом.
-    pub fn list_dialog_mut(&mut self) -> Option<&mut ListDialog> {
-        self.list_dialog.as_mut()
-    }
-
-    pub fn close_list_dialog(&mut self) {
-        self.list_dialog = None;
-    }
-
-    /// Открывает диалог создания списка.
-    ///
-    /// Длительность и отступ берутся из активного списка: новый список чаще
-    /// всего ведут с теми же настройками, что и текущий.
-    pub fn open_new_list_dialog(&mut self) {
-        if !self.has_open_file() {
-            self.show_notice("Файл не открыт");
-            return;
-        }
-
-        let (duration_sec, buffer_sec) = self.active_list_timing();
-
-        self.list_dialog = Some(ListDialog {
-            kind: ListDialogKind::Create,
-            name: String::new(),
-            duration_sec,
-            buffer_sec,
-            output_dir: None,
-            error: None,
-            focus_pending: true,
-        });
-    }
-
-    /// Открывает диалог настроек активного списка.
-    ///
-    /// Список материализуется в хранилище: настраивать можно и то, куда
-    /// ещё не положили ни одной закладки.
-    pub fn open_list_settings_dialog(&mut self) {
-        let Some(list) = self
-            .current_bookmarks_mut()
-            .and_then(VideoBookmarks::active_mut)
-        else {
-            self.show_notice("Файл не открыт");
-            return;
-        };
-
-        self.list_dialog = Some(ListDialog {
-            kind: ListDialogKind::Edit {
-                original: list.name.clone(),
-            },
-            name: list.name.clone(),
-            duration_sec: list.duration_sec,
-            buffer_sec: list.buffer_sec,
-            output_dir: list.output_dir.clone(),
-            error: None,
-            focus_pending: true,
-        });
-    }
-
-    /// Применяет диалог: создаёт список либо правит существующий.
-    ///
-    /// Диалог остаётся открытым, если имя не подошло, — иначе введённое
-    /// пропало бы вместе с окном.
-    pub fn apply_list_dialog(&mut self) {
-        let Some(dialog) = self.list_dialog.clone() else {
-            return;
-        };
-
-        let result = match &dialog.kind {
-            ListDialogKind::Create => self.create_list_from(&dialog),
-            ListDialogKind::Edit { original } => self.update_list_from(&dialog, original),
-        };
-
-        match result {
-            Ok(()) => {
-                self.bookmarks.save();
-                self.list_dialog = None;
-            }
-            Err(e) => {
-                if let Some(open) = self.list_dialog.as_mut() {
-                    open.error = Some(e.to_string());
-                }
-            }
-        }
-    }
-
-    fn create_list_from(&mut self, dialog: &ListDialog) -> Result<(), ListError> {
-        let video = self.current_bookmarks_mut().ok_or(ListError::NotFound)?;
-
-        video.create_list(&dialog.name, dialog.duration_sec, dialog.buffer_sec)?;
-
-        let created = video.active_list.clone();
-        if let Some(list) = video.find_mut(&created) {
-            list.output_dir = dialog.output_dir.clone();
-        }
-
-        tracing::info!(список = %created, "создан список отрезков");
-        Ok(())
-    }
-
-    fn update_list_from(&mut self, dialog: &ListDialog, original: &str) -> Result<(), ListError> {
-        let video = self.current_bookmarks_mut().ok_or(ListError::NotFound)?;
-
-        video.rename_list(original, &dialog.name)?;
-
-        let list = video.find_mut(&dialog.name).ok_or(ListError::NotFound)?;
-        list.duration_sec = dialog.duration_sec;
-        list.buffer_sec = dialog.buffer_sec;
-        list.output_dir = dialog.output_dir.clone();
-
-        tracing::info!(список = %dialog.name, "настройки списка изменены");
-        Ok(())
-    }
-
-    /// Выполняет операцию над списками текущего видео и сохраняет результат.
-    ///
-    /// Ошибка показывается пользователю готовым текстом из `ListError`.
-    fn apply_to_video(
-        &mut self,
-        action: impl FnOnce(&mut VideoBookmarks) -> Result<(), ListError>,
-    ) {
-        let Some(video) = self.current_bookmarks_mut() else {
-            self.show_notice("Файл не открыт");
-            return;
-        };
-
-        match action(video) {
-            Ok(()) => self.bookmarks.save(),
-            Err(e) => {
-                tracing::debug!(error = %e, "операция над списком не выполнена");
-                self.show_notice(&e.to_string());
-            }
+            self.show_notice(&crate::tr!(
+                format!("Перенесено в «{target}»"),
+                format!("Moved to «{target}»")
+            ));
         }
     }
 }

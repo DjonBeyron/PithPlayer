@@ -91,19 +91,21 @@ impl Metrics {
 
     /// Строка для отчёта о замерах — её вписываем в PLAN.md.
     pub fn report(&self, hwdec_label: &str) -> String {
+        let ms = crate::tr!("мс", "ms");
+
         let first_frame = self
             .time_to_first_frame
-            .map(|d| format!("{} мс", d.as_millis()))
+            .map(|d| format!("{} {ms}", d.as_millis()))
             .unwrap_or_else(|| "—".into());
 
         let seek = self
             .last_seek
-            .map(|d| format!("{} мс", d.as_millis()))
+            .map(|d| format!("{} {ms}", d.as_millis()))
             .unwrap_or_else(|| "—".into());
 
         let frame = self
             .average_frame_ms()
-            .map(|ms| format!("{ms:.1} мс"))
+            .map(|value| format!("{value:.1} {ms}"))
             .unwrap_or_else(|| "—".into());
 
         let fps = self
@@ -111,13 +113,23 @@ impl Metrics {
             .map(|f| format!("{f:.0}"))
             .unwrap_or_else(|| "—".into());
 
-        format!(
-            "Режим: {hwdec_label}\n\
-             До первого кадра: {first_frame}\n\
-             Перемотка: {seek}\n\
-             Время кадра: {frame} (~{fps} к/с)\n\
-             Кадров отрисовано: {}",
-            self.frames_rendered
+        let frames = self.frames_rendered;
+
+        crate::tr!(
+            format!(
+                "Режим: {hwdec_label}\n\
+                 До первого кадра: {first_frame}\n\
+                 Перемотка: {seek}\n\
+                 Время кадра: {frame} (~{fps} к/с)\n\
+                 Кадров отрисовано: {frames}"
+            ),
+            format!(
+                "Mode: {hwdec_label}\n\
+                 To first frame: {first_frame}\n\
+                 Seek: {seek}\n\
+                 Frame time: {frame} (~{fps} fps)\n\
+                 Frames rendered: {frames}"
+            )
         )
     }
 }

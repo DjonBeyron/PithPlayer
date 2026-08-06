@@ -5,6 +5,7 @@
 
 use crate::app::PithApp;
 use crate::theme;
+use crate::tr;
 
 /// Ширина окна подтверждения.
 const DIALOG_WIDTH: f32 = 480.0;
@@ -18,6 +19,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     let mut cancel = false;
 
     egui::Window::new(prompt.title())
+        .order(egui::Order::Foreground)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -29,7 +31,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
             ui.add_space(14.0);
             ui.horizontal(|ui| {
                 confirm |= ui.button(prompt.confirm_label()).clicked();
-                cancel |= ui.button("Отмена").clicked();
+                cancel |= ui.button(tr!("Отмена", "Cancel")).clicked();
             });
         });
 

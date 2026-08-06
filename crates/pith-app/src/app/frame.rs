@@ -49,12 +49,15 @@ impl eframe::App for PithApp {
         ui::handle_hotkeys(self, ui.ctx());
 
         self.poll_preview(ui.ctx());
+        self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
         self.track_window_geometry(ui.ctx());
         self.track_manual_resize(ui.ctx());
         self.fit_window_to_video(ui.ctx());
         self.track_pointer_activity(ui.ctx());
-        self.update_bookmarks_panel_hover(ui.ctx());
+        self.track_window_focus(ui.ctx());
+        self.store_volume(ui.ctx());
+        self.store_subtitle_style(ui.ctx());
 
         if let Some(message) = self.fatal_error.clone() {
             ui::show_fatal_error(ui, &message);
@@ -99,6 +102,26 @@ impl PithApp {
             })
             .inner;
 
+        // Нажатие по кадру ставит и снимает паузу. Кроме двух случаев:
+        // им подняли окно из другого приложения или им закрывают открытую
+        // панель отрезков. И то и другое — не просьба о паузе, а способ
+        // вернуться к плееру; она достанется следующему нажатию.
+        let dismissing = self.bookmarks_panel_dismissible();
+        let busy = self.just_regained_focus() || dismissing;
+
+        if video_area.clicked() && !busy {
+            self.toggle_pause();
+        }
+
+        // Двойное нажатие разворачивает плеер и возвращает обратно.
+        //
+        // Пауза при этом остаётся как была: egui считает второе нажатие
+        // и обычным тоже, поэтому она успевает переключиться дважды —
+        // туда и сразу обратно.
+        if video_area.double_clicked() && !dismissing {
+            self.toggle_fullscreen(ui.ctx());
+        }
+
         // Меню показывается штатным механизмом egui: только внутри него
         // подменю раскрываются по наведению и размещаются сбоку.
         video_area.context_menu(|ui| ui::show_menu_items(self, ui));
@@ -109,10 +132,18 @@ impl PithApp {
     /// Слои интерфейса поверх видео.
     fn paint_overlays(&mut self, ctx: &egui::Context) {
         ui::show_subtitles(self, ctx);
-        ui::show_controls(self, ctx);
+        ui::show_playback_badge(self, ctx);
+        ui::show_seek_hud(self, ctx);
+
+        // Панель отрезков идёт во всю высоту окна, и её нижний край
+        // приходится на панель управления. Рисуем её раньше: полоса
+        // перемотки и кнопки должны остаться сверху и в рабочем виде.
+        ui::show_panel_handle(self, ctx);
         crate::slow::probe("отрисовка панели отрезков", || {
             ui::show_bookmarks_panel(self, ctx)
         });
+
+        ui::show_controls(self, ctx);
         ui::show_list_dialog(self, ctx);
         ui::show_bookmark_rename(self, ctx);
         ui::show_clear_list_prompt(self, ctx);
@@ -120,6 +151,8 @@ impl PithApp {
         ui::show_file_types_prompt(self, ctx);
         ui::show_extraction_notice(self, ctx);
         ui::show_search(self, ctx);
+        ui::show_subtitle_style(self, ctx);
+        ui::show_history(self, ctx);
         ui::show_notice(self, ctx);
         ui::show_migration_report(self, ctx);
         ui::show_resume_offer(self, ctx);
@@ -128,11 +161,13 @@ impl PithApp {
     /// Держит в заголовке окна название текущего видео.
     ///
     /// Заголовок — единственное место, где имя файла видно целиком:
-    /// поверх видео его не покажешь, не закрыв кадр.
+    /// поверх видео его не покажешь, не закрыв кадр. Поэтому номера версии
+    /// в нём нет — он липнет к имени файла и мешает его читать. Версия
+    /// стоит в шапке панели отрезков.
     fn refresh_window_title(&mut self, ctx: &egui::Context) {
         let title = match self.current_video_name() {
-            Some(name) => format!("{name} — Pith Player {}", crate::VERSION),
-            None => format!("Pith Player {}", crate::VERSION),
+            Some(name) => format!("{name} — Pith Player"),
+            None => "Pith Player".to_string(),
         };
 
         if self.window_title.as_deref() == Some(title.as_str()) {

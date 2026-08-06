@@ -3,53 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::file::{read_json, write_json};
+use crate::language::Language;
 use crate::paths::DataPaths;
+use crate::subtitle_layout::SubtitleLayout;
 use crate::subtitle_priority::SubtitlePriority;
 
 const FORMAT_VERSION: u32 = 1;
-
-/// Куда прижат слой субтитров по горизонтали и вертикали.
-///
-/// Хранится долей от размера окна, а не пикселями: иначе после смены
-/// разрешения субтитры уезжали бы за край.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct SubtitleLayout {
-    /// 0 — левый край, 1 — правый.
-    pub x: f32,
-    /// 0 — верх, 1 — низ.
-    pub y: f32,
-    /// Размер текста в точках.
-    pub font_size: f32,
-}
-
-impl SubtitleLayout {
-    /// Раскладка основных субтитров: внизу по центру.
-    pub fn main() -> Self {
-        Self {
-            x: 0.5,
-            y: 0.88,
-            font_size: 30.0,
-        }
-    }
-
-    /// Раскладка вторых субтитров: над основными.
-    pub fn secondary() -> Self {
-        Self {
-            x: 0.5,
-            y: 0.76,
-            font_size: 26.0,
-        }
-    }
-
-    /// Ограничивает раскладку разумными пределами.
-    pub fn clamped(self) -> Self {
-        Self {
-            x: self.x.clamp(0.0, 1.0),
-            y: self.y.clamp(0.0, 1.0),
-            font_size: self.font_size.clamp(10.0, 96.0),
-        }
-    }
-}
 
 /// Положение и размер окна в точках экрана.
 ///
@@ -125,6 +84,9 @@ impl Default for FragmentSettings {
 pub struct Settings {
     pub version: u32,
 
+    /// Язык интерфейса.
+    pub language: Language,
+
     /// Языки аудио по убыванию приоритета.
     pub audio_languages: Vec<String>,
     /// Правила автовыбора субтитров.
@@ -139,6 +101,15 @@ pub struct Settings {
 
     /// Громкость, запоминается между запусками.
     pub volume: i64,
+
+    /// Звук выключен.
+    ///
+    /// Отдельно от громкости: выключили звук — при следующем запуске он
+    /// остаётся выключенным, а громкость ждёт прежняя.
+    pub muted: bool,
+
+    /// Повторять файл по кругу.
+    pub looping: bool,
 
     /// Показывать панель замеров производительности.
     pub show_metrics: bool,
@@ -163,12 +134,15 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: FORMAT_VERSION,
+            language: Language::default(),
             audio_languages: ["eng", "en"].iter().map(|s| s.to_string()).collect(),
             subtitle_priority: SubtitlePriority::default(),
             subtitles_visible: true,
             main_subtitle: SubtitleLayout::main(),
             secondary_subtitle: SubtitleLayout::secondary(),
             volume: 80,
+            muted: false,
+            looping: false,
             show_metrics: true,
             window: None,
             audio_device: None,
@@ -208,28 +182,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn раскладка_обрезается_по_пределам() {
-        let layout = SubtitleLayout {
-            x: 5.0,
-            y: -3.0,
-            font_size: 500.0,
-        }
-        .clamped();
-
-        assert_eq!(layout.x, 1.0);
-        assert_eq!(layout.y, 0.0);
-        assert_eq!(layout.font_size, 96.0);
-    }
-
-    #[test]
-    fn вторые_субтитры_выше_основных() {
-        assert!(
-            SubtitleLayout::secondary().y < SubtitleLayout::main().y,
-            "второй слой обязан быть над основным"
-        );
-    }
-
-    #[test]
     fn настройки_записываются_и_читаются() {
         let dir = tempfile::tempdir().expect("временный каталог");
         let paths = DataPaths::with_root(dir.path());
@@ -249,6 +201,31 @@ mod tests {
         let loaded = Settings::load(&paths);
         assert_eq!(loaded.volume, 55);
         assert!(loaded.subtitle_priority.secondary_enabled);
+    }
+
+    #[test]
+    fn язык_запоминается() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        Settings {
+            language: Language::En,
+            ..Default::default()
+        }
+        .save(&paths);
+
+        assert_eq!(Settings::load(&paths).language, Language::En);
+    }
+
+    #[test]
+    fn без_записи_о_языке_остаётся_русский() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        std::fs::create_dir_all(dir.path()).expect("каталог");
+        std::fs::write(paths.settings(), r#"{"volume": 42}"#).expect("настройки");
+
+        assert_eq!(Settings::load(&paths).language, Language::Ru);
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 use crate::app::PithApp;
 use crate::theme;
+use crate::tr;
 
 /// Ширина окна сообщения.
 const WIDTH: f32 = 420.0;
@@ -29,19 +30,25 @@ pub fn show(app: &PithApp, ctx: &egui::Context) {
 
                     ui.vertical_centered(|ui| {
                         ui.label(
-                            egui::RichText::new("Идёт вырезание отрезков")
-                                .color(theme::TEXT_PRIMARY)
-                                .strong()
-                                .size(20.0),
+                            egui::RichText::new(tr!(
+                                "Идёт вырезание отрезков",
+                                "Cutting fragments"
+                            ))
+                            .color(theme::TEXT_PRIMARY)
+                            .strong()
+                            .size(20.0),
                         );
                         ui.add_space(10.0);
 
                         // Пока задачи готовятся, число отрезков ещё неизвестно:
                         // их считает `ffprobe`, и на большом файле это секунды.
                         let stage = if progress.is_preparing() {
-                            "Подготовка…".to_string()
+                            tr!("Подготовка…", "Preparing…").to_string()
                         } else {
-                            format!("Готово {} из {}", progress.done, progress.total)
+                            tr!(
+                                format!("Готово {} из {}", progress.done, progress.total),
+                                format!("Done {} of {}", progress.done, progress.total)
+                            )
                         };
 
                         ui.label(
@@ -60,10 +67,12 @@ pub fn show(app: &PithApp, ctx: &egui::Context) {
                         ui.add_space(12.0);
 
                         ui.label(
-                            egui::RichText::new(
+                            egui::RichText::new(tr!(
                                 "Не закрывайте приложение. Воспроизведение \
-                                 остановлено, пока идёт работа.",
-                            )
+                                     остановлено, пока идёт работа.",
+                                "Do not close the player. Playback is paused \
+                                     while the work is running.",
+                            ))
                             .color(theme::TEXT_SECONDARY),
                         );
                     });
