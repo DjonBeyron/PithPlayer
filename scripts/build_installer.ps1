@@ -27,7 +27,10 @@ Write-Host "версия: $version"
 # Компилятор Inno Setup: сначала обычные места установки, потом PATH.
 $candidates = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+    # winget ставит Inno Setup в профиль пользователя, если нет прав
+    # администратора — там его и находим чаще всего.
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 )
 $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source }
