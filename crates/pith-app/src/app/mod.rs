@@ -170,6 +170,11 @@ pub struct PithApp {
     history_open: bool,
     /// Время кадра, в котором историю открыли.
     history_opened_at: Option<f64>,
+    /// В начале кадра было открыто меню или другое всплывающее окно.
+    ///
+    /// Нажатие мимо меню его закрывает, и этим же нажатием не должна
+    /// переключаться пауза.
+    menu_was_open: bool,
 }
 
 impl PithApp {
@@ -285,6 +290,7 @@ impl PithApp {
             history,
             history_open: false,
             history_opened_at: None,
+            menu_was_open: false,
         };
 
         // Проверка наличия FFmpeg запускает внешний процесс. Делаем это

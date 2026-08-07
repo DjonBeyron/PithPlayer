@@ -294,6 +294,8 @@ impl PithApp {
 
         self.badge_paused = paused;
         self.badge_started = Some(self.frame_time);
+
+        tracing::debug!(paused, "пауза переключена");
     }
 
     /// Значок состояния для отрисовки в центре кадра.
