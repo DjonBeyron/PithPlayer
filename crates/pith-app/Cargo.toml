@@ -29,5 +29,12 @@ image = { version = "0.25", default-features = false, features = ["ico", "jpeg"]
 # Файловые ассоциации в HKCU: делаются по явному действию пользователя.
 winreg = "0.52"
 
+# Цвет заголовка окна задаётся только через DWM: ни winit, ни eframe его
+# не выставляют, а системный отливает цветом обоев (см. caption.rs).
+# Оба крейта уже в дереве зависимостей — их тянет сам eframe.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+raw-window-handle = "0.6"
+
 [dev-dependencies]
 tempfile = "3"

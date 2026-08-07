@@ -6,6 +6,7 @@
 mod app;
 mod associations;
 mod bench;
+mod caption;
 mod cli;
 mod fonts;
 mod i18n;
@@ -89,6 +90,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             fonts::install(&cc.egui_ctx);
             theme::apply(&cc.egui_ctx);
+            caption::apply(cc);
             Ok(Box::new(PithApp::new(cc, args, instance)))
         }),
     );

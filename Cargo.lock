@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "pith-app"
-version = "5.1.25"
+version = "5.1.26"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2044,16 +2044,18 @@ dependencies = [
  "pith-mpv",
  "pith-store",
  "pith-subs",
+ "raw-window-handle",
  "rfd",
  "tempfile",
  "tracing",
  "tracing-subscriber",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 
 [[package]]
 name = "pith-fragments"
-version = "5.1.25"
+version = "5.1.26"
 dependencies = [
  "tempfile",
  "thiserror 2.0.19",
@@ -2062,7 +2064,7 @@ dependencies = [
 
 [[package]]
 name = "pith-mpv"
-version = "5.1.25"
+version = "5.1.26"
 dependencies = [
  "libmpv2",
  "thiserror 2.0.19",
@@ -2071,7 +2073,7 @@ dependencies = [
 
 [[package]]
 name = "pith-store"
-version = "5.1.25"
+version = "5.1.26"
 dependencies = [
  "serde",
  "serde_json",
@@ -2082,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "pith-subs"
-version = "5.1.25"
+version = "5.1.26"
 dependencies = [
  "thiserror 2.0.19",
  "tracing",
