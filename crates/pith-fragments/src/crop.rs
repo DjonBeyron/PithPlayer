@@ -80,7 +80,7 @@ fn detect_with_limit(video: &Path, position: f64, limit: u32) -> Option<Crop> {
 
     let output = crate::quiet::command("ffmpeg")
         .args(["-hide_banner", "-nostats"])
-        .args(["-ss", &crate::command::format_time(start)])
+        .args(["-ss", &crate::time::format_time(start)])
         .arg("-i")
         .arg(video)
         .args(["-t", &SAMPLE_SECONDS.to_string()])
