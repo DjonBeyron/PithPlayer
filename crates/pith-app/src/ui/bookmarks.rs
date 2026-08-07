@@ -295,7 +295,7 @@ fn show_move_menu(ui: &mut egui::Ui, time_ms: i64, others: &[String], actions: &
     );
 
     for name in others {
-        if ui.button(name).clicked() {
+        if ui.button(crate::i18n::list_name(name)).clicked() {
             actions.move_to = Some((time_ms, name.clone()));
             ui.close();
         }

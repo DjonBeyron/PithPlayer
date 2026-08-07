@@ -221,14 +221,18 @@ fn show_bookmark_lists(app: &mut PithApp, ui: &mut egui::Ui) {
     let mut chosen = None;
     let mut create = false;
 
+    let shown = crate::i18n::list_name(&active);
     let title = tr!(
-        format!("Список отрезков: {active}"),
-        format!("Fragment list: {active}")
+        format!("Список отрезков: {shown}"),
+        format!("Fragment list: {shown}")
     );
 
     ui.menu_button(title, |ui| {
         for name in &names {
-            if ui.radio(*name == active, name).clicked() {
+            if ui
+                .radio(*name == active, crate::i18n::list_name(name))
+                .clicked()
+            {
                 chosen = Some(name.clone());
                 ui.close();
             }

@@ -134,7 +134,7 @@ fn show_switcher(app: &mut PithApp, ui: &mut egui::Ui) {
         // Место под кружок цвета: сам он рисуется кистью — знака ●
         // в шрифте может не оказаться, и вместо него выходит пустая рамка.
         let list = egui::Button::new(
-            egui::RichText::new(format!("{DOT_SPACE}{active}"))
+            egui::RichText::new(format!("{DOT_SPACE}{}", crate::i18n::list_name(&active)))
                 .color(theme::TEXT_PRIMARY)
                 .size(15.0),
         )

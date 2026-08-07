@@ -56,7 +56,9 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Язык мастера передаётся первому запуску: пользователь уже выбрал его
+; здесь, и спрашивать второй раз незачем. Дальше выбор живёт в настройках.
+Filename: "{app}\{#AppExe}"; Parameters: "--language={language}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Логи плеера рядом с программой — данные пользователя в профиле не трогаем.

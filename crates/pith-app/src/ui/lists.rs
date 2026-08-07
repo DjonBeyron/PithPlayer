@@ -34,7 +34,8 @@ pub fn show_choices(app: &mut PithApp, ui: &mut egui::Ui) {
 
     for (index, name) in names.iter().enumerate() {
         // Отступ под кружок: без него точка липла к первой букве.
-        let label = egui::RichText::new(format!("{DOT_SPACE}{name}")).color(theme::TEXT_PRIMARY);
+        let label = egui::RichText::new(format!("{DOT_SPACE}{}", crate::i18n::list_name(name)))
+            .color(theme::TEXT_PRIMARY);
 
         let response = ui.selectable_label(*name == active, label);
 

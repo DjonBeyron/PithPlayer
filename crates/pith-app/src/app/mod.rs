@@ -185,7 +185,7 @@ impl PithApp {
 
         // Язык поднимаем до первого кадра: иначе интерфейс успел бы
         // мелькнуть по-русски у того, кто выбрал английский.
-        crate::i18n::set(settings.language);
+        Self::choose_language(&mut settings, &data_paths, args.language);
 
         let hwdec = args.hwdec.unwrap_or_default();
         let options = EngineOptions {
@@ -339,6 +339,34 @@ impl PithApp {
             || self.file_types_prompt.is_some()
             || self.migration.is_some()
             || self.subtitle_style_open
+    }
+
+    /// Выбирает язык при запуске.
+    ///
+    /// Порядок такой: выбор из установщика, потом сохранённый в настройках,
+    /// потом язык системы. Установщик спрашивает язык в мастере, и второй
+    /// раз его спрашивать незачем; на чистой машине настроек ещё нет —
+    /// берём тот, на котором говорит Windows.
+    fn choose_language(
+        settings: &mut Settings,
+        paths: &DataPaths,
+        chosen: Option<pith_store::Language>,
+    ) {
+        let first_run = !paths.settings().exists();
+
+        let language = match (chosen, first_run) {
+            (Some(language), _) => language,
+            (None, true) => crate::system_language::detect(),
+            (None, false) => settings.language,
+        };
+
+        if settings.language != language {
+            settings.language = language;
+            settings.save(paths);
+        }
+
+        crate::i18n::set(language);
+        tracing::info!(?language, первый_запуск = first_run, "язык интерфейса");
     }
 
     /// Язык интерфейса.

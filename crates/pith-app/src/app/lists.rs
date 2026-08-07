@@ -257,9 +257,10 @@ impl PithApp {
         });
 
         if removed {
+            let shown = crate::i18n::list_name(&active);
             self.show_notice(&crate::tr!(
-                format!("Список «{active}» удалён"),
-                format!("List «{active}» deleted")
+                format!("Список «{shown}» удалён"),
+                format!("List «{shown}» deleted")
             ));
         }
     }
@@ -276,9 +277,10 @@ impl PithApp {
         });
 
         if moved {
+            let shown = crate::i18n::list_name(&target);
             self.show_notice(&crate::tr!(
-                format!("Перенесено в «{target}»"),
-                format!("Moved to «{target}»")
+                format!("Перенесено в «{shown}»"),
+                format!("Moved to «{shown}»")
             ));
         }
     }

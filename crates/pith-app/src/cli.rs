@@ -18,6 +18,11 @@ pub struct Args {
     pub no_fit_window: bool,
     /// Откуда переносить данные версии 4.
     pub import_from: Option<String>,
+    /// Язык интерфейса, выбранный при установке.
+    ///
+    /// Установщик передаёт его первому запуску: в мастере язык уже
+    /// выбирали, спрашивать второй раз незачем.
+    pub language: Option<pith_store::Language>,
 }
 
 /// Текст справки.
@@ -33,6 +38,7 @@ Pith Player v5
   --no-fit-window   Не подгонять окно под форму видео
   --import-from=<папка>
                     Откуда перенести данные версии 4
+  --language=<код>  Язык интерфейса: ru | en
   --help            Показать эту справку
 
 Управление:
@@ -65,6 +71,11 @@ impl Args {
                 parsed.no_fit_window = true;
             } else if let Some(dir) = arg.strip_prefix("--import-from=") {
                 parsed.import_from = Some(dir.to_string());
+            } else if let Some(code) = arg.strip_prefix("--language=") {
+                parsed.language = parse_language(code);
+                if parsed.language.is_none() {
+                    tracing::warn!(code, "неизвестный язык интерфейса, беру системный");
+                }
             } else if !arg.starts_with("--") && parsed.file.is_none() {
                 parsed.file = Some(arg);
             }
@@ -79,6 +90,20 @@ fn parse_hwdec(value: &str) -> Option<HwDec> {
         "zero-copy" | "d3d11va" => Some(HwDec::ZeroCopy),
         "copy" | "auto-copy" => Some(HwDec::Copy),
         "software" | "no" => Some(HwDec::Software),
+        _ => None,
+    }
+}
+
+/// Язык по коду из установщика или командной строки.
+///
+/// Принимаем и полные обозначения вроде `ru-RU`: установщик отдаёт имя
+/// своего языкового файла, и оно может выглядеть по-разному.
+fn parse_language(code: &str) -> Option<pith_store::Language> {
+    let code = code.trim().to_lowercase();
+
+    match code.split(['-', '_']).next() {
+        Some("ru") => Some(pith_store::Language::Ru),
+        Some("en") => Some(pith_store::Language::En),
         _ => None,
     }
 }

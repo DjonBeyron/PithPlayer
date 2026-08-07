@@ -41,6 +41,21 @@ macro_rules! tr {
     };
 }
 
+/// Имя списка отрезков для показа.
+///
+/// Список по умолчанию заводится в хранилище под именем «Основной» — это
+/// данные, и переименовывать их на ходу нельзя: по имени лежат закладки
+/// и называется папка с вырезанными отрезками. Переводим только надпись.
+///
+/// Списки, названные пользователем, показываются как есть: это его слова.
+pub fn list_name(name: &str) -> String {
+    if name == pith_store::DEFAULT_LIST {
+        return tr!("Основной", "Main").to_string();
+    }
+
+    name.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Language, current, set};
@@ -54,6 +69,20 @@ mod tests {
         set(Language::Ru);
         assert_eq!(current(), Language::Ru);
         assert_eq!(tr!("да", "yes"), "да");
+    }
+
+    #[test]
+    fn список_по_умолчанию_переводится_только_на_вид() {
+        set(Language::En);
+        assert_eq!(super::list_name(pith_store::DEFAULT_LIST), "Main");
+        assert_eq!(
+            super::list_name("Диалоги"),
+            "Диалоги",
+            "своё имя не трогаем"
+        );
+
+        set(Language::Ru);
+        assert_eq!(super::list_name(pith_store::DEFAULT_LIST), "Основной");
     }
 
     #[test]

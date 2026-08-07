@@ -12,6 +12,7 @@ mod i18n;
 mod logging;
 mod single_instance;
 mod slow;
+mod system_language;
 mod theme;
 mod ui;
 mod video;
