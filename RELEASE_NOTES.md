@@ -1,4 +1,4 @@
-# Pith Player 5.0.13
+# Pith Player 5.1.17
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,28 +8,42 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.0.13-setup.exe` | Installer. Ships with FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.0.13-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.17-setup.exe` | Installer. Ships with FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.17-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
 
-## In this build
+## Opening a file is twice as fast
 
-- **English interface.** Right-click → Other → Language. The choice is
-  remembered between runs.
-- **Darker theme** across the whole player, with the settings window rebuilt
-  into cards and switches instead of a wall of checkboxes.
-- **Subtitle look.** Colour and weight for each of the two subtitle layers,
-  with a live sample shown where the subtitles really are.
-- **Control bar adapts to the window.** In a narrow window the volume slider
-  folds under the speaker icon and opens vertically; in a very small one only
-  play, bookmark, sound and the seek bar remain.
-- **Subtitle search button** next to the bookmark button, and the file
-  duration moved to the right end of the seek bar.
-- New logo, and an installer.
+Measured from process start to the first frame on screen: **1.4 s → 0.7 s** for
+a 20 GB 4K film, and the same for a small clip — file size barely mattered,
+because the time was going elsewhere.
+
+- The player wrote its port into `instance.port` and cleaned it up in a place
+  the code never reached. Every launch but the very first waited out the full
+  connection timeout to a port that was long gone: **610 ms of pure nothing.**
+- Subtitle lines were polled from mpv on every frame, including while the file
+  was still opening. The engine is busy then, and the answer takes its time —
+  **283 ms of frozen interface** for lines that did not exist yet.
+- The seek preview started itself in the first frame: a second mpv instance and
+  a thumbnail mosaic competing for the processor exactly while the main engine
+  was opening the file. Now they start when you first hover the seek bar.
+
+## The window no longer jumps
+
+It used to appear at the previous session's size and half a second later snap
+to the shape of the video. The shape is now read from the container before the
+window is created, so it opens correct from the first moment — a vertical video
+opens in a vertical window straight away.
+
+## Language fixes
+
+- Choosing English in the installer now actually gives you an English player.
+- On a clean machine the player follows the language of Windows.
+- The default fragment list reads as **Main**, not «Основной».
 
 ## How the cutting works
 
