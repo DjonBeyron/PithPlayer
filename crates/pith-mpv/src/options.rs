@@ -67,6 +67,13 @@ pub struct EngineOptions {
     pub subtitle_languages: Vec<String>,
     /// Устройство вывода звука. `None` — выбирает mpv.
     pub audio_device: Option<String>,
+    /// Куда mpv писать свой подробный журнал. `None` — не писать.
+    ///
+    /// Диагностика: по этому журналу видно, сколько времени внутри mpv
+    /// занимают разбор контейнера, инициализация декодера и открытие
+    /// звукового устройства. В обычной работе выключено — запись
+    /// подробного журнала сама по себе стоит времени.
+    pub log_file: Option<String>,
 }
 
 impl Default for EngineOptions {
@@ -79,6 +86,7 @@ impl Default for EngineOptions {
             audio_languages: vec!["eng".into(), "en".into()],
             subtitle_languages: vec!["eng".into(), "en".into()],
             audio_device: None,
+            log_file: None,
         }
     }
 }
@@ -160,6 +168,11 @@ impl EngineOptions {
             // с закрытием плеера.
             ("loop-file", if self.looping { "inf" } else { "no" }.into()),
         ];
+
+        if let Some(path) = &self.log_file {
+            options.push(("log-file", path.clone()));
+            options.push(("msg-level", "all=v".into()));
+        }
 
         // Устройство задаётся до запуска: иначе звук успевает пойти
         // в системное по умолчанию и на смену отзывается щелчком.

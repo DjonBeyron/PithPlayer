@@ -58,6 +58,12 @@ pub struct PreviewState {
     board_failed: bool,
     /// Поток со вторым экземпляром mpv.
     source: Option<FrameSource>,
+    /// Предпросмотр уже просили — можно поднимать источники.
+    ///
+    /// До первого наведения на полосу они не нужны, а стоят дорого: второй
+    /// экземпляр mpv и сборка мозаики отнимают процессор ровно тогда, когда
+    /// основной движок открывает файл, и первый кадр приходит позже.
+    wanted: bool,
     /// Для какого места точный кадр уже заказан.
     requested: Option<f64>,
 }
@@ -98,6 +104,11 @@ impl PithApp {
     /// мозаики за это время всё равно успевает смениться, а точный кадр
     /// подтянется, как только рука остановится.
     pub fn request_preview(&mut self, time: f64) {
+        // Курсор на полосе — теперь источники нужны. Поднимутся в ближайшем
+        // кадре: заводить второй экземпляр mpv прямо здесь значило бы
+        // задержать тот кадр, ради которого сюда и навели.
+        self.preview.wanted = true;
+
         if self.scrubbing && self.preview.board.is_some() {
             // Забываем прошлый заказ: когда ползунок отпустят, кадр этого
             // места нужно будет попросить заново.
@@ -134,8 +145,11 @@ impl PithApp {
 
     /// Готовит источники и забирает готовое. Вызывается каждый кадр.
     pub(super) fn poll_preview(&mut self, ctx: &egui::Context) {
-        self.ensure_frame_source(ctx);
-        self.ensure_storyboard();
+        if self.preview.wanted {
+            self.ensure_frame_source(ctx);
+            self.ensure_storyboard();
+        }
+
         self.take_ready_board(ctx);
         self.take_ready_frame(ctx);
     }

@@ -196,6 +196,10 @@ impl PithApp {
             audio_languages: settings.audio_languages.clone(),
             subtitle_languages: settings.subtitle_priority.main_tags.clone(),
             audio_device: settings.audio_device.clone(),
+            // Подробный журнал mpv включается переменной окружения
+            // PITH_MPV_LOG=<путь>: он нужен для разбора того, на что
+            // уходит время открытия файла, и в обычной работе не пишется.
+            log_file: std::env::var("PITH_MPV_LOG").ok(),
         };
 
         let mut watch_positions = WatchPositions::load(data_paths.clone());
