@@ -106,10 +106,24 @@ var
   DownloadPage: TDownloadWizardPage;
   FfmpegReady: Boolean;
 
-{ Согласился ли пользователь на загрузку. }
+{ Нужно ли скачивать FFmpeg.
+  При тихой установке страницы мастера не показываются, но галочка на ней
+  всё равно создана и стоит — тихая установка тоже получает FFmpeg.
+  Отказаться можно ключом /NOFFMPEG. }
 function WantsFfmpeg: Boolean;
+var
+  Index: Integer;
 begin
   Result := (FfmpegPage <> nil) and FfmpegPage.Values[0];
+
+  if not Result then
+    Exit;
+
+  for Index := 1 to ParamCount do
+    if CompareText(ParamStr(Index), '/NOFFMPEG') = 0 then begin
+      Result := False;
+      Exit;
+    end;
 end;
 
 procedure InitializeWizard;
@@ -146,13 +160,18 @@ begin
     Result := Copy(Result, 1, Space - 1);
 end;
 
-function NextButtonClick(CurPageID: Integer): Boolean;
+{ Загрузка идёт здесь, а не по кнопке «Далее»: `PrepareToInstall`
+  вызывается и при тихой установке, где кнопок нет вовсе.
+
+  Возвращённая строка означала бы отказ от установки — мы её не возвращаем
+  никогда: плеер без FFmpeg работает, недоступна только нарезка. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Hash: String;
 begin
-  Result := True;
+  Result := '';
 
-  if (CurPageID <> wpReady) or not WantsFfmpeg or FfmpegReady then
+  if not WantsFfmpeg or FfmpegReady then
     Exit;
 
   DownloadPage.Clear;
