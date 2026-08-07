@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "pith-app"
-version = "5.1.26"
+version = "5.1.27"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2055,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "pith-fragments"
-version = "5.1.26"
+version = "5.1.27"
 dependencies = [
  "tempfile",
  "thiserror 2.0.19",
@@ -2064,7 +2064,7 @@ dependencies = [
 
 [[package]]
 name = "pith-mpv"
-version = "5.1.26"
+version = "5.1.27"
 dependencies = [
  "libmpv2",
  "thiserror 2.0.19",
@@ -2073,7 +2073,7 @@ dependencies = [
 
 [[package]]
 name = "pith-store"
-version = "5.1.26"
+version = "5.1.27"
 dependencies = [
  "serde",
  "serde_json",
@@ -2084,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "pith-subs"
-version = "5.1.26"
+version = "5.1.27"
 dependencies = [
  "thiserror 2.0.19",
  "tracing",

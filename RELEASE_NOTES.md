@@ -1,4 +1,4 @@
-# Pith Player 5.1.24
+# Pith Player 5.1.27
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,13 +8,25 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.24-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.24-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.27-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.27-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
+
+## Smaller things that were in the way
+
+- **The window title is just the file name now.** Names are long, the title bar
+  is the only place a full one fits, and the program name was eating into it.
+- **A right-click no longer costs you a pause.** Clicking away to dismiss the
+  context menu used to close the menu *and* toggle playback. Now that click only
+  dismisses the menu; the next one pauses, as always.
+- **The title bar matches the player.** Windows 11 tints it with Mica — the
+  blurred content of whatever sits behind the window, so it drifted blue or
+  green depending on the wallpaper. It is now the same dark shade as the
+  control bar at the bottom.
 
 ## Cut clips no longer start silent
 
