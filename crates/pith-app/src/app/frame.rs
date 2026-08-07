@@ -27,6 +27,7 @@ impl eframe::App for PithApp {
     /// Страховка: если закрытие пришло мимо кадра egui, освобождаем здесь.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.remember_window_geometry();
+        self.release_instance_port();
         self.shutdown_engine();
     }
 

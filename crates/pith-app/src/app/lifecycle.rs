@@ -60,9 +60,20 @@ impl PithApp {
         tracing::debug!("запрос на закрытие окна, освобождаю движок");
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         self.remember_window_geometry();
+        self.release_instance_port();
         self.shutdown_engine();
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         true
+    }
+
+    /// Убирает файл с номером порта.
+    ///
+    /// Делается при закрытии окна, а не в конце `main`: до конца `main`
+    /// управление не доходит вовсе — `run_and_return: false`, и eframe
+    /// завершает процесс прямо из цикла событий. Оставленный файл стоил
+    /// следующему запуску всего таймаута соединения с мёртвым портом.
+    pub(super) fn release_instance_port(&self) {
+        crate::single_instance::release(&self.data_paths);
     }
 
     /// Останавливает воспроизведение и освобождает движок.
@@ -203,14 +214,23 @@ impl PithApp {
             .to_string()
         })?;
 
+        // Обе части запуска замеряются: они идут до первого кадра, и по
+        // журналу должно быть видно, на что уходит время открытия файла.
+        let started = std::time::Instant::now();
         let mut engine = Engine::new(options).map_err(engine_error_text)?;
+        tracing::info!(ms = started.elapsed().as_millis(), "движок mpv создан");
 
         // Пробуждаем интерфейс, когда mpv готов показать новый кадр.
         // Внутри обратного вызова обращаться к mpv нельзя.
+        let started = std::time::Instant::now();
         let egui_ctx = cc.egui_ctx.clone();
         engine
             .init_render_context(loader, move || egui_ctx.request_repaint())
             .map_err(engine_error_text)?;
+        tracing::info!(
+            ms = started.elapsed().as_millis(),
+            "контекст отрисовки готов"
+        );
 
         Ok(engine)
     }

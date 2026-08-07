@@ -16,8 +16,13 @@ use pith_store::DataPaths;
 /// Файл с номером порта работающего экземпляра.
 const PORT_FILE: &str = "instance.port";
 
-/// Сколько ждать ответа от работающего экземпляра.
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(600);
+/// Сколько ждать соединения с работающим экземпляром.
+///
+/// Соединение идёт на себя же, и слушает его отдельный поток: живой плеер
+/// отвечает за доли миллисекунды, независимо от того, чем занят интерфейс.
+/// Мёртвый порт брандмауэр просто молчит, и всё это время плеер стоял бы
+/// с пустым окном. Прежние 600 мс были почти половиной времени запуска.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// Приёмник путей к файлам от других запусков плеера.
 pub struct InstanceServer {
@@ -39,11 +44,16 @@ impl InstanceServer {
 /// При любой неполадке связи считаем себя основным: лучше открыть второе
 /// окно, чем не открыть файл вовсе.
 pub fn become_primary_or_forward(paths: &DataPaths, file: Option<&str>) -> Option<InstanceServer> {
-    if let Some(port) = read_port(paths)
-        && forward_to_primary(port, file)
-    {
-        tracing::info!(port, "плеер уже запущен, файл передан ему");
-        return None;
+    if let Some(port) = read_port(paths) {
+        if forward_to_primary(port, file) {
+            tracing::info!(port, "плеер уже запущен, файл передан ему");
+            return None;
+        }
+
+        // Порт остался от прошлого запуска. Убираем запись сразу: иначе
+        // каждый следующий запуск снова ждёт соединения с мертвецом.
+        tracing::debug!(port, "порт прошлого запуска не отвечает");
+        release(paths);
     }
 
     let listener = match TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))) {
