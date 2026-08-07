@@ -42,16 +42,11 @@ impl FragmentJob {
 
         if self.reencode {
             self.push_reencode_seek(&mut args);
+            args.push("-t".into());
+            args.push(format_time(self.duration));
         } else {
-            // При перепаковке `-ss` до `-i` — быстрое позиционирование.
-            args.push("-ss".into());
-            args.push(format_time(self.start));
-            args.push("-i".into());
-            args.push(path_arg(&self.source));
+            self.push_copy_seek(&mut args);
         }
-
-        args.push("-t".into());
-        args.push(format_time(self.duration));
 
         // Только основной видеопоток: `-map 0:v` захватил бы и обложки,
         // а они ломают вывод. Исправление реального бага v4.
@@ -80,12 +75,59 @@ impl FragmentJob {
             args.push("copy".into());
         }
 
+        // Ни глав, ни служебных дорожек. Главы принадлежат целому фильму:
+        // в отрезке на восемнадцать секунд FFmpeg пишет их текстовой
+        // дорожкой длиной во весь исходник, и монтажные программы
+        // спотыкаются о неё на ровном месте.
+        args.push("-map_chapters".into());
+        args.push("-1".into());
+        args.push("-dn".into());
+
         // Исправляет отрицательные метки времени в начале отрезка.
         args.push("-avoid_negative_ts".into());
         args.push("make_zero".into());
 
         args.push(path_arg(&self.output));
         args
+    }
+
+    /// Перемотка при перепаковке: `-ss` до `-i` — быстрое позиционирование.
+    ///
+    /// Когда звук приводится к AAC, видео копируется, а звук
+    /// перекодируется — и FFmpeg обходится с ними по-разному. Копию он
+    /// начинает с опорного кадра перед меткой, а перекодируемый звук
+    /// обрезает ровно по метке. Замер на 4К-файле: видео с 0,08 с,
+    /// звук — с 2,06 с. Первые две секунды отрезка выходили без звука,
+    /// и картинка в начале дёргалась.
+    ///
+    /// Лечится тремя ключами: `-noaccurate_seek` не даёт обрезать звук
+    /// по метке, `-copyts` оставляет исходные метки времени обоим потокам,
+    /// а конец задаётся не длительностью, а абсолютным временем `-to` —
+    /// иначе тишина просто переезжает в хвост отрезка.
+    fn push_copy_seek(&self, args: &mut Vec<String>) {
+        let mixed = self.audio_aac;
+
+        if mixed {
+            args.push("-noaccurate_seek".into());
+        }
+
+        args.push("-ss".into());
+        args.push(format_time(self.start));
+
+        if mixed {
+            args.push("-copyts".into());
+        }
+
+        args.push("-i".into());
+        args.push(path_arg(&self.source));
+
+        if mixed {
+            args.push("-to".into());
+            args.push(format_time(self.start + self.duration));
+        } else {
+            args.push("-t".into());
+            args.push(format_time(self.duration));
+        }
     }
 
     /// Двойная перемотка для точного старта при перекодировании.
@@ -279,6 +321,20 @@ mod tests {
     }
 
     #[test]
+    fn главы_исходника_в_отрезок_не_переносятся() {
+        // FFmpeg пишет их дорожкой длиной во весь фильм: в отрезке
+        // на восемнадцать секунд это дорожка на десять минут.
+        let args = задача(false).to_args();
+
+        let chapters = позиция(&args, "-map_chapters").expect("главы отключены");
+        assert_eq!(args[chapters + 1], "-1");
+        assert!(
+            args.contains(&"-dn".to_string()),
+            "и служебные дорожки тоже"
+        );
+    }
+
+    #[test]
     fn метки_времени_приводятся_к_нулю() {
         let args = задача(false).to_args();
         assert!(args.contains(&"make_zero".to_string()));
@@ -301,6 +357,45 @@ mod tests {
 
         let c = позиция(&args, "-c");
         assert!(c.is_none(), "общего `-c copy` быть не должно");
+    }
+
+    /// Видео копируется, а звук перекодируется — и FFmpeg обходится
+    /// с ними по-разному: копию начинает с опорного кадра перед меткой,
+    /// а звук обрезает ровно по метке. Отрезок выходил с двумя секундами
+    /// тишины в начале. Три ключа ниже это и лечат.
+    #[test]
+    fn звук_в_aac_начинается_вместе_с_видео() {
+        let mut job = задача(false);
+        job.audio_aac = true;
+        let args = job.to_args();
+
+        let seek = позиция(&args, "-noaccurate_seek").expect("звук не обрезается по метке");
+        let ss = позиция(&args, "-ss").expect("перемотка есть");
+        let copyts = позиция(&args, "-copyts").expect("метки времени исходные");
+        let input = позиция(&args, "-i").expect("вход есть");
+
+        assert!(seek < ss, "ключ действует на перемотку, значит идёт раньше");
+        assert!(copyts < input, "метки задаются до входного файла");
+
+        // Конец задаётся абсолютным временем, иначе тишина переезжает
+        // в хвост отрезка: 65.5 + 18 = 83.5.
+        let to = позиция(&args, "-to").expect("конец задан абсолютно");
+        assert_eq!(args[to + 1], "00:01:23.500");
+        assert!(
+            позиция(&args, "-t").is_none(),
+            "длительность здесь не нужна"
+        );
+    }
+
+    #[test]
+    fn обычная_перепаковка_осталась_прежней() {
+        // Когда копируются оба потока, обходиться с ними по-разному
+        // FFmpeg не может — лишние ключи только мешают.
+        let args = задача(false).to_args();
+
+        assert!(позиция(&args, "-noaccurate_seek").is_none());
+        assert!(позиция(&args, "-copyts").is_none());
+        assert!(позиция(&args, "-t").is_some(), "конец задан длительностью");
     }
 
     #[test]
