@@ -9,6 +9,9 @@
 
 param(
     [switch]$SkipBuild,
+    # Вложить FFmpeg в установщик вместо загрузки при установке.
+    # Нужно для поставки в сеть, где скачивать нечего.
+    [switch]$WithFfmpeg,
     [string]$OutputDir = "dist"
 )
 
@@ -58,18 +61,57 @@ foreach ($file in @("pith-player.exe", "libmpv-2.dll")) {
     Copy-Item $path $staging
 }
 
-# FFmpeg не обязателен: без него не работает только нарезка отрезков.
-foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
-    $found = (Get-Command $tool -ErrorAction SilentlyContinue).Source
-    if ($found) {
-        Copy-Item $found $staging
-        Write-Host "вложен $tool"
-    } else {
-        Write-Warning "$tool не найден в PATH — нарезка в установленной программе будет недоступна"
+# Проверяет, что вложенный FFmpeg работает сам по себе.
+#
+# В PATH часто оказывается не сам ffmpeg, а перенаправляющий ярлык —
+# шим Chocolatey или scoop весом в треть мегабайта. У нас в поставку
+# однажды уехал именно такой: на чужой машине он ищет несуществующий
+# путь и нарезка не работает вовсе. Проверяем запуском из пустой папки:
+# там от шима остаётся только ошибка.
+function Assert-Standalone {
+    param([string]$Directory)
+
+    $probe = Join-Path $env:TEMP ("pith_ffmpeg_probe_" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    New-Item -ItemType Directory -Force $probe | Out-Null
+
+    try {
+        foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
+            Copy-Item (Join-Path $Directory $tool) $probe
+        }
+
+        foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
+            & (Join-Path $probe $tool) -version > $null 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "$tool не работает сам по себе — в PATH лежит перенаправляющий ярлык, а не FFmpeg. Соберите без -WithFfmpeg: установщик скачает настоящий."
+            }
+        }
+
+        Write-Host "вложенный FFmpeg проверен: работает без своей папки"
+    } finally {
+        Remove-Item -Recurse -Force $probe -ErrorAction SilentlyContinue
     }
 }
 
-& $iscc "/DVersion=$version" "/DStaging=$((Resolve-Path $staging).Path)" "installer\pith-player.iss"
+# По умолчанию FFmpeg не вкладывается: установщик предложит скачать его
+# сам — свежую сборку и без лишних сорока мегабайт в самом файле.
+$arguments = @("/DVersion=$version", "/DStaging=$((Resolve-Path $staging).Path)")
+
+if ($WithFfmpeg) {
+    foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
+        $found = (Get-Command $tool -ErrorAction SilentlyContinue).Source
+        if (-not $found) { throw "$tool не найден в PATH — вложить нечего" }
+
+        Copy-Item $found $staging
+        Write-Host "вложен $tool"
+    }
+
+    Assert-Standalone $staging
+    $arguments += "/DBundledFfmpeg=1"
+} else {
+    Write-Host "FFmpeg скачается при установке"
+}
+
+& $iscc @arguments "installer\pith-player.iss"
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup вернул ошибку" }
 
 $setup = Join-Path $OutputDir "PithPlayer-$version-setup.exe"
