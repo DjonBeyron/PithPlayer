@@ -72,25 +72,17 @@ fn build_jobs(
             return None;
         }
 
-        let requested: Vec<f64> = plan
+        // На опорный кадр встаёт сам FFmpeg: при перепаковке он отматывается
+        // к ближайшему перед меткой, и чёрных кадров не бывает. Своё
+        // выравнивание через ffprobe отсюда убрано — оно вредило: когда
+        // просят время ровно опорного кадра, FFmpeg отходит назад ещё
+        // на один, и отрезок выходил длиннее заказанного. Замер на 4К:
+        // 20,2 с вместо 18 с выравниванием и 19,1 с без него.
+        let starts = plan
             .list
             .bookmarks
             .iter()
-            .map(|b| (b.seconds() - f64::from(plan.list.buffer_sec)).max(0.0))
-            .collect();
-
-        // Перепаковка режет по опорным кадрам: встаём точно на них,
-        // иначе отрезок начинается с чёрного экрана. Весь список
-        // выравнивается одним вызовом ffprobe (PLAN.md §6.4).
-        let starts: Vec<f64> = if request.reencode {
-            requested.clone()
-        } else {
-            pith_fragments::align_to_keyframes(&request.source, &requested)
-                .into_iter()
-                .zip(&requested)
-                .map(|(aligned, requested)| aligned.unwrap_or(*requested))
-                .collect()
-        };
+            .map(|b| (b.seconds() - f64::from(plan.list.buffer_sec)).max(0.0));
 
         for (bookmark, start) in plan.list.bookmarks.iter().zip(starts) {
             jobs.push(FragmentJob {
