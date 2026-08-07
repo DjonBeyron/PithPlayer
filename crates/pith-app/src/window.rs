@@ -18,6 +18,45 @@ const MIN_WINDOW_WIDTH: f32 = 380.0;
 const MIN_REASONABLE_SIDE: i64 = 16;
 const MAX_REASONABLE_SIDE: i64 = 16384;
 
+/// Размер окна к первому показу — под форму кадра, ещё до его создания.
+///
+/// Подгонять окно после загрузки файла поздно: оно уже полсекунды как
+/// на экране, и правка размера видна скачком. Форму кадра узнаём заранее
+/// (`pith_mpv::probe_video_shape`) и открываем окно сразу такой.
+///
+/// Высота берётся от прошлого сеанса — её пользователь и выбирал, меняя
+/// размер окна. Ширина считается по кадру. Экран здесь ещё неизвестен,
+/// поэтому ширину ограничиваем от самой высоты: окно ляжет в разумные
+/// пределы, а всё, что не влезло, поправит обычная подгонка по монитору.
+pub fn startup_size(saved: Option<(f32, f32)>, shape: Option<(i64, i64)>) -> Option<egui::Vec2> {
+    /// Во сколько раз окно может быть шире своей высоты.
+    const MAX_WIDTH_RATIO: f32 = 2.5;
+
+    let (width, height) = shape?;
+
+    if !is_reasonable(width) || !is_reasonable(height) {
+        return None;
+    }
+
+    let (saved_width, saved_height) = saved?;
+
+    if saved_width <= 0.0 || saved_height <= 0.0 {
+        return None;
+    }
+
+    let aspect = width as f32 / height as f32;
+    let fitted = egui::vec2(
+        (saved_height * aspect).min(saved_height * MAX_WIDTH_RATIO),
+        saved_height,
+    );
+
+    if fitted.x < MIN_WINDOW_WIDTH {
+        return None;
+    }
+
+    Some(fitted)
+}
+
 /// Считает размер окна под кадр `width`×`height`.
 ///
 /// Возвращает `None`, если подгонять не нужно или не из чего:
@@ -101,6 +140,43 @@ pub fn reshape(
 
 #[cfg(test)]
 mod tests {
+    use super::startup_size;
+
+    #[test]
+    fn стартовое_окно_принимает_форму_кадра() {
+        // Вертикальное видео: высота прошлого сеанса, ширина по кадру.
+        let size = startup_size(Some((1280.0, 720.0)), Some((480, 854))).expect("размер");
+        assert_eq!(size.y, 720.0, "высоту выбирал пользователь");
+        assert!(
+            (size.x - 720.0 * 480.0 / 854.0).abs() < 0.5,
+            "ширина по кадру"
+        );
+    }
+
+    #[test]
+    fn широкий_кадр_не_растягивает_окно_без_предела() {
+        // Панорамное видео 32:9 — окно не должно уехать за экран.
+        let size = startup_size(Some((1280.0, 720.0)), Some((3840, 1080))).expect("размер");
+        assert!(size.x <= 720.0 * 2.5, "ширина ограничена высотой");
+    }
+
+    #[test]
+    fn без_формы_кадра_размер_не_меняется() {
+        assert!(startup_size(Some((1280.0, 720.0)), None).is_none());
+    }
+
+    #[test]
+    fn нелепые_размеры_кадра_отвергаются() {
+        assert!(startup_size(Some((1280.0, 720.0)), Some((2, 2))).is_none());
+        assert!(startup_size(Some((1280.0, 720.0)), Some((99999, 99999))).is_none());
+    }
+
+    #[test]
+    fn слишком_узкое_окно_не_предлагается() {
+        // Совсем узкий кадр при низком окне дал бы окно уже панели управления.
+        assert!(startup_size(Some((640.0, 400.0)), Some((240, 1080))).is_none());
+    }
+
     use super::*;
 
     /// Рабочая область обычного экрана 1920×1080.

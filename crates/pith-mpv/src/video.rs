@@ -24,6 +24,48 @@ impl Engine {
         }
     }
 
+    /// Форма кадра по данным демуксера — до того, как заведён декодер.
+    ///
+    /// `video-params/dw` появляется только когда mpv настроил вывод, а это
+    /// полсекунды спустя: декодер D3D11 и звуковое устройство поднимаются
+    /// раньше. Демуксер знает размеры сразу после открытия файла, и окно
+    /// можно открыть нужным с первого показа, без скачка.
+    ///
+    /// Поворот из метаданных учитывается: видео с телефона иначе откроется
+    /// лёжа (CLAUDE.md, §6.12).
+    pub fn demux_video_size(&self) -> Option<(i64, i64)> {
+        let count = self.property_i64("track-list/count")?;
+
+        for index in 0..count {
+            let Ok(kind) = self.property_string(&format!("track-list/{index}/type")) else {
+                continue;
+            };
+
+            if kind != "video" {
+                continue;
+            }
+
+            let width = self.property_i64(&format!("track-list/{index}/demux-w"))?;
+            let height = self.property_i64(&format!("track-list/{index}/demux-h"))?;
+
+            if width <= 0 || height <= 0 {
+                continue;
+            }
+
+            let rotate = self
+                .property_i64(&format!("track-list/{index}/demux-rotation"))
+                .unwrap_or(0);
+
+            return Some(if rotate % 180 == 90 {
+                (height, width)
+            } else {
+                (width, height)
+            });
+        }
+
+        None
+    }
+
     /// Размеры кадра исходника — по ним видно, что обрезать есть что.
     pub fn source_size(&self) -> Option<(i64, i64)> {
         let width = self.property_i64("video-params/w")?;

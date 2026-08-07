@@ -46,8 +46,20 @@ fn main() -> eframe::Result<()> {
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "запуск Pith Player");
 
+    // Форму кадра узнаём до создания окна: иначе оно открывается в размере
+    // прошлого сеанса, а через полсекунды прыгает под кадр. Служебный
+    // экземпляр mpv читает заголовок за десятки миллисекунд.
+    let shape = args
+        .file
+        .as_deref()
+        // Только для файла на диске: у сетевого адреса заголовок ждать
+        // некогда — окно важнее его формы.
+        .filter(|path| std::path::Path::new(path).is_file())
+        .and_then(|path| pith_mpv::probe_video_shape(path, pith_mpv::PROBE_TIMEOUT));
+
     let options = eframe::NativeOptions {
         viewport: restore_geometry(
+            shape,
             egui::ViewportBuilder::default()
                 // Без номера версии: заголовок занят именем файла,
                 // а версия стоит в шапке панели отрезков.
@@ -90,7 +102,11 @@ fn main() -> eframe::Result<()> {
 /// при его создании, менять его потом — значит показать пользователю
 /// скачок. Битые или бессмысленные значения пропускаем, тогда окно
 /// откроется как обычно.
-fn restore_geometry(viewport: egui::ViewportBuilder, paths: &DataPaths) -> egui::ViewportBuilder {
+fn restore_geometry(
+    shape: Option<(i64, i64)>,
+    viewport: egui::ViewportBuilder,
+    paths: &DataPaths,
+) -> egui::ViewportBuilder {
     /// Размер окна при первом запуске.
     const DEFAULT_SIZE: [f32; 2] = [1280.0, 720.0];
 
@@ -98,14 +114,27 @@ fn restore_geometry(viewport: egui::ViewportBuilder, paths: &DataPaths) -> egui:
         .window
         .filter(pith_store::WindowGeometry::is_sane);
 
+    let previous = saved
+        .map(|geometry| (geometry.width, geometry.height))
+        .unwrap_or((DEFAULT_SIZE[0], DEFAULT_SIZE[1]));
+
+    // Размер под форму кадра, если её удалось узнать. Иначе — как закрыли.
+    let size = window::startup_size(Some(previous), shape)
+        .map(|size| [size.x, size.y])
+        .unwrap_or([previous.0, previous.1]);
+
     match saved {
         Some(geometry) => {
-            tracing::info!(?geometry, "окно открывается там же, где было закрыто");
+            tracing::info!(
+                ?geometry,
+                ?size,
+                "окно открывается там же, где было закрыто"
+            );
             viewport
                 .with_position([geometry.x, geometry.y])
-                .with_inner_size([geometry.width, geometry.height])
+                .with_inner_size(size)
         }
-        None => viewport.with_inner_size(DEFAULT_SIZE),
+        None => viewport.with_inner_size(size),
     }
 }
 

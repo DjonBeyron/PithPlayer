@@ -227,7 +227,12 @@ impl PithApp {
             // Окно уже создано с сохранёнными координатами: проверим
             // в первом же кадре, что оно попало на существующий экран.
             window_position_pending: settings.window.is_some(),
-            restored_geometry_pending: settings.window.is_some(),
+            // Размер первого окна выбран до его создания — по форме кадра,
+            // узнанной у демуксера (main::restore_geometry). Менять его
+            // после загрузки файла нельзя: окно уже на экране, и правка
+            // видна скачком. Остаётся только поправить форму, если размеры
+            // узнать не удалось.
+            restored_geometry_pending: true,
             seek_pending: false,
             seek_target: None,
             scrub_wanted: None,

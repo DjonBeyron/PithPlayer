@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use libmpv2::Mpv;
-use libmpv2::events::Event;
 
 use crate::error::{MpvError, Result};
 use crate::options::EngineOptions;
@@ -14,23 +13,6 @@ use crate::render::RenderContext;
 /// Границы скорости воспроизведения.
 pub const MIN_SPEED: f64 = 0.25;
 pub const MAX_SPEED: f64 = 4.0;
-
-/// Коды ошибок mpv, означающие «этот файл воспроизвести не удалось».
-///
-/// Значения из `mpv_error`: файл не открылся, играть нечего, формат
-/// неизвестен, формат не поддерживается. Остальные коды — сбои отдельных
-/// команд и свойств, из-за них плеер останавливать нельзя.
-const LOADING_FAILED: i32 = -13;
-const NOTHING_TO_PLAY: i32 = -16;
-const UNKNOWN_FORMAT: i32 = -17;
-const UNSUPPORTED: i32 = -18;
-
-fn is_playback_failure(code: i32) -> bool {
-    matches!(
-        code,
-        LOADING_FAILED | NOTHING_TO_PLAY | UNKNOWN_FORMAT | UNSUPPORTED
-    )
-}
 
 /// Состояние воспроизведения для отрисовки интерфейса.
 ///
@@ -105,27 +87,20 @@ pub struct Engine {
     /// поэтому контекст отрисовки освободится раньше `mpv`, на который ссылается.
     render_ctx: Option<Arc<RenderContext>>,
     /// В куче: адрес должен быть стабилен, на него ссылается контекст отрисовки.
-    mpv: Box<Mpv>,
-    state: PlaybackState,
+    ///
+    /// Видно всему крейту: разбор событий живёт в соседнем модуле.
+    pub(crate) mpv: Box<Mpv>,
+    pub(crate) state: PlaybackState,
 }
 
 impl Engine {
     /// Создаёт движок. Ошибка здесь означает, что libmpv недоступна —
     /// приложение должно показать понятное сообщение, а не падать.
     pub fn new(options: &EngineOptions) -> Result<Self> {
-        let mpv = Mpv::with_initializer(|init| {
-            for (name, value) in options.to_mpv_options() {
-                init.set_property(name, value.as_str())?;
-            }
-            Ok(())
-        })
-        .map_err(|e| MpvError::Init(e.to_string()))?;
-
+        let engine = Self::with_options(options.to_mpv_options())?;
         tracing::info!(hwdec = options.hwdec.as_mpv_value(), "движок mpv запущен");
 
         Ok(Self {
-            render_ctx: None,
-            mpv: Box::new(mpv),
             state: PlaybackState {
                 volume: options.volume,
                 muted: options.muted,
@@ -133,7 +108,34 @@ impl Engine {
                 speed: 1.0,
                 ..Default::default()
             },
+            ..engine
         })
+    }
+
+    /// Движок со своим набором опций — для служебных экземпляров без окна.
+    pub(crate) fn with_options(options: Vec<(&'static str, String)>) -> Result<Self> {
+        let mpv = Mpv::with_initializer(|init| {
+            for (name, value) in &options {
+                init.set_property(name, value.as_str())?;
+            }
+            Ok(())
+        })
+        .map_err(|e| MpvError::Init(e.to_string()))?;
+
+        Ok(Self {
+            render_ctx: None,
+            mpv: Box::new(mpv),
+            state: PlaybackState::default(),
+        })
+    }
+
+    /// Ждёт любого события mpv, но не дольше срока.
+    ///
+    /// Нужен служебным экземплярам: они ничего не рисуют и просто ждут,
+    /// когда движок разберётся с файлом. Опроса по кругу здесь нет —
+    /// будит сама очередь событий.
+    pub(crate) fn wait_any_event(&mut self, seconds: f64) {
+        let _ = self.mpv.wait_event(seconds);
     }
 
     pub(crate) fn mpv_ref(&self) -> &Mpv {
@@ -279,47 +281,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Разбирает очередь событий mpv без блокировки.
-    ///
-    /// Вызывается каждый кадр интерфейса.
-    pub fn pump_events(&mut self) -> Vec<EngineEvent> {
-        let mut events = Vec::new();
-
-        // Ноль означает «не ждать»: очередь опрашивается до опустошения.
-        while let Some(result) = self.mpv.wait_event(0.0) {
-            match result {
-                Ok(Event::FileLoaded) => {
-                    self.state.file_loaded = true;
-                    self.state.finished = false;
-                    events.push(EngineEvent::FileLoaded);
-                }
-                Ok(Event::EndFile(reason)) => {
-                    tracing::debug!(?reason, "воспроизведение файла завершено");
-                    // Файл остаётся открытым на последнем кадре: нажатие
-                    // «играть» после этого должно начинать сначала.
-                    self.state.finished = true;
-                    events.push(EngineEvent::EndFile);
-                }
-                Ok(Event::PlaybackRestart) => events.push(EngineEvent::SeekDone),
-                Ok(Event::Shutdown) => events.push(EngineEvent::Shutdown),
-                Ok(_) => {}
-                // Неудачу с файлом libmpv2 отдаёт не событием, а ошибкой:
-                // `EndFile` с ненулевым кодом подменяется на `Err`.
-                Err(libmpv2::Error::Raw(code)) if is_playback_failure(code) => {
-                    tracing::error!(code, "файл не удалось воспроизвести");
-                    self.state.file_loaded = false;
-                    events.push(EngineEvent::PlaybackError);
-                }
-                Err(e) => {
-                    // Ошибка разбора одного события не должна останавливать цикл.
-                    tracing::warn!(error = %e, "ошибка при разборе события mpv");
-                }
-            }
-        }
-
-        events
-    }
-
     /// Обновляет состояние из свойств mpv.
     ///
     /// Недоступное свойство — не ошибка: mpv ещё не готов его отдать,
@@ -391,27 +352,5 @@ impl Engine {
         self.mpv
             .set_property(name, value)
             .map_err(|e| MpvError::command(name, e))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn неудача_с_файлом_узнаётся_по_коду() {
-        assert!(is_playback_failure(UNKNOWN_FORMAT), "битый файл");
-        assert!(is_playback_failure(LOADING_FAILED), "файл не открылся");
-        assert!(is_playback_failure(UNSUPPORTED), "нет кодека");
-        assert!(is_playback_failure(NOTHING_TO_PLAY), "нечего играть");
-    }
-
-    #[test]
-    fn сбой_свойства_не_считается_неудачей_с_файлом() {
-        // Свойство недоступно (-10) и команда не выполнилась (-12) случаются
-        // в обычной работе: останавливать из-за них воспроизведение нельзя.
-        assert!(!is_playback_failure(-10));
-        assert!(!is_playback_failure(-12));
-        assert!(!is_playback_failure(0));
     }
 }

@@ -6,9 +6,11 @@
 mod audio;
 mod engine;
 mod error;
+mod events;
 mod options;
 mod preview;
 mod render;
+mod shape;
 mod tracks;
 mod video;
 
@@ -18,4 +20,5 @@ pub use error::{MpvError, Result};
 pub use options::{EngineOptions, HwDec};
 pub use preview::PreviewEngine;
 pub use render::{FrameSize, ProcAddressLoader, RenderContext, SharedRenderContext};
+pub use shape::{PROBE_TIMEOUT, probe as probe_video_shape};
 pub use tracks::{Track, TrackKind};
