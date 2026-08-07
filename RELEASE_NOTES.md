@@ -1,4 +1,4 @@
-# Pith Player 5.1.19
+# Pith Player 5.1.24
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,13 +8,33 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.19-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.19-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.24-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.24-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
+
+## Cut clips no longer start silent
+
+Cutting copies the picture and, by default, re-encodes the sound to AAC so that
+Adobe editors can read it. FFmpeg treats those two differently: the copied
+picture starts at the keyframe before your mark, while the re-encoded sound was
+trimmed exactly at the mark. Measured on a 4K film, the picture began at 0.08 s
+and the sound only at 2.06 s — the first two seconds had no audio, and the
+opening looked jerky because the player had nothing to sync the picture to.
+Now both start together, within 0.02 s of each other.
+
+Two more things came out of the same investigation:
+
+- **Clips are closer to the length you asked for.** The player used to look up
+  the nearest keyframe itself and start exactly there — which made FFmpeg step
+  back one keyframe further. An 18-second clip came out 20.2 s long; it is now
+  19.0 s, and one lookup per batch is gone with it.
+- **No more phantom chapter track.** FFmpeg copied the source film's chapters
+  into every clip as a text track spanning the whole original — a ten-minute
+  track inside an eighteen-second file.
 
 ## The installer now fetches FFmpeg
 
