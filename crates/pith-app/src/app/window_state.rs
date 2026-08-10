@@ -18,13 +18,46 @@ impl PithApp {
             return;
         };
 
-        if self.settings.window == Some(geometry) {
+        let maximized = self.window_maximized;
+
+        if self.settings.window == Some(geometry) && self.settings.window_maximized == maximized {
             return;
         }
 
         self.settings.window = Some(geometry);
+        self.settings.window_maximized = maximized;
         self.settings.save(&self.data_paths);
-        tracing::info!(?geometry, "положение окна запомнено");
+        tracing::info!(
+            ?geometry,
+            развёрнуто = maximized,
+            "положение окна запомнено"
+        );
+    }
+
+    /// Сообщает системе, что окно открыто развёрнутым.
+    ///
+    /// Делается один раз и не на первом кадре, а когда окно уже показано:
+    /// объявленное развёрнутым до показа, оно появлялось раньше срока
+    /// и мигало (PLAN.md §6.12).
+    pub(super) fn announce_maximized(&mut self, frame: &eframe::Frame) {
+        if !self.announce_maximized_pending {
+            return;
+        }
+        self.announce_maximized_pending = false;
+
+        // Сворачивать окно кнопкой заголовка нужно в тот размер, каким его
+        // закрыли до разворота, — он записан в настройках.
+        let Some(restore) = self.settings.window.filter(|g| g.is_sane()) else {
+            return;
+        };
+
+        crate::screen::mark_maximized(
+            frame,
+            egui::Rect::from_min_size(
+                egui::pos2(restore.x, restore.y),
+                egui::vec2(restore.width, restore.height),
+            ),
+        );
     }
 
     /// Следит за фактическим положением окна.
@@ -44,6 +77,21 @@ impl PithApp {
         let (Some(outer), Some(inner)) = (outer, inner) else {
             return;
         };
+
+        // Окно во весь экран запоминается как развёрнутое, а размеры его
+        // при этом не трогаются: запомнить нужно сам факт, а размеры — те,
+        // что были до разворота. В них окно и вернётся.
+        //
+        // Считаем таким и то, что развернула кнопка заголовка, и то, что мы
+        // открыли по рабочей области сами: разворачивать его средствами
+        // системы нельзя — она проигрывает разворот с анимацией, и весь
+        // интерфейс перестраивается на глазах (PLAN.md §6.12).
+        let by_system = ctx.input(|i| i.viewport().maximized).unwrap_or(false);
+        self.window_maximized = by_system || fills_work_area(outer);
+
+        if self.window_maximized {
+            return;
+        }
 
         // Свёрнутое окно Windows отдаёт с бессмысленными координатами.
         if inner.width() < 1.0 || inner.height() < 1.0 {
@@ -92,6 +140,30 @@ impl PithApp {
             (monitor.y - rect.height()) / 2.0,
         )));
     }
+}
+
+/// Занимает ли окно всю рабочую область своего экрана.
+///
+/// Такое окно для пользователя ничем не отличается от развёрнутого: оно
+/// закрывает экран целиком. Именно им плеер и открывается, когда его
+/// закрыли развёрнутым.
+fn fills_work_area(outer: egui::Rect) -> bool {
+    /// Допуск на рамки окна и округление размеров.
+    const TOLERANCE: f32 = 24.0;
+
+    let Some((position, size)) = crate::screen::work_area(outer.center().x, outer.center().y)
+    else {
+        return false;
+    };
+
+    let area = egui::Rect::from_min_size(position, size);
+
+    // Сравниваем по покрытию, а не по совпадению: развёрнутое системой окно
+    // выходит за края экрана на толщину рамки, и точного равенства не будет.
+    outer.min.x <= area.min.x + TOLERANCE
+        && outer.min.y <= area.min.y + TOLERANCE
+        && outer.max.x >= area.max.x - TOLERANCE
+        && outer.max.y >= area.max.y - TOLERANCE
 }
 
 /// Сколько экранов вправо и вниз считаем допустимым расположением.

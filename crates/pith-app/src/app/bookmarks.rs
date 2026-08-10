@@ -58,7 +58,12 @@ impl PithApp {
         };
 
         let time_ms = (engine.state().position * 1000.0) as i64;
-        let name = self.subtitle_text.main.clone().and_then(clean_name);
+        let name = self
+            .subtitle_text
+            .main
+            .clone()
+            .or_else(|| self.recent_subtitle_line())
+            .and_then(clean_name);
 
         self.add_bookmark(time_ms, name);
     }
@@ -255,6 +260,17 @@ impl PithApp {
         }
     }
 
+    /// Закрепляет панель кнопкой в ней самой.
+    ///
+    /// От `toggle_bookmarks_panel` отличается тем, что панель в обоих
+    /// случаях остаётся на экране: нажали булавку — она перестаёт
+    /// закрываться нажатием мимо, нажали ещё раз — снова закрывается,
+    /// но не исчезает из-под пальца в тот же миг.
+    pub fn toggle_panel_pin(&mut self) {
+        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
+        self.bookmarks_panel = !self.bookmarks_panel_pinned;
+    }
+
     /// Насколько панель видна сейчас.
     ///
     /// Ноль на кадрах прогрева: панель рисуется целиком, но не показывается,
@@ -357,12 +373,8 @@ impl PithApp {
 }
 
 /// Готовит реплику к роли названия закладки.
-///
-/// Реплика бывает многострочной, а название — нет. Пустая после чистки
-/// строка названием не становится: закладка подпишется словом по умолчанию.
 fn clean_name(line: String) -> Option<String> {
-    let name = line.replace('\n', " ").trim().to_string();
-    (!name.is_empty()).then_some(name)
+    crate::text::to_single_line(&line)
 }
 
 /// Сколько кадров панель рисуется невидимой перед показом.

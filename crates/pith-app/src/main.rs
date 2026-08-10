@@ -11,9 +11,11 @@ mod cli;
 mod fonts;
 mod i18n;
 mod logging;
+mod screen;
 mod single_instance;
 mod slow;
 mod system_language;
+mod text;
 mod theme;
 mod ui;
 mod video;
@@ -113,13 +115,36 @@ fn restore_geometry(
     /// Размер окна при первом запуске.
     const DEFAULT_SIZE: [f32; 2] = [1280.0, 720.0];
 
-    let saved = pith_store::Settings::load(paths)
-        .window
-        .filter(pith_store::WindowGeometry::is_sane);
+    let settings = pith_store::Settings::load(paths);
+    let maximized = settings.window_maximized;
+    let saved = settings.window.filter(pith_store::WindowGeometry::is_sane);
 
     let previous = saved
         .map(|geometry| (geometry.width, geometry.height))
         .unwrap_or((DEFAULT_SIZE[0], DEFAULT_SIZE[1]));
+
+    // Окно, закрытое развёрнутым, открывается сразу во весь экран.
+    //
+    // Просить разворот у оконной системы бесполезно: eframe показывает окно
+    // сам и своим размером, и разворот достаётся уже показанному окну —
+    // тогда он проигрывается с анимацией, и видно, как окно разъезжается.
+    // Поэтому открываем его ровно по рабочей области экрана: разъезжаться
+    // некуда, а разворот, который приложение попросит первым кадром,
+    // ничего уже не двигает.
+    if maximized {
+        // Ищем монитор по середине прошлого окна, а не по его углу: угол
+        // развёрнутого окна Windows заводит на пару точек за край экрана,
+        // и по нему находился соседний монитор.
+        let anchor = saved.map_or((0.0, 0.0), |g| (g.x + g.width / 2.0, g.y + g.height / 2.0));
+
+        if let Some((position, size)) = screen::full_screen_window(anchor.0, anchor.1) {
+            tracing::info!(?position, ?size, "окно открывается во весь экран");
+
+            return viewport
+                .with_position([position.x, position.y])
+                .with_inner_size([size.x, size.y]);
+        }
+    }
 
     // Размер под форму кадра, если её удалось узнать. Иначе — как закрыли.
     let size = window::startup_size(Some(previous), shape)

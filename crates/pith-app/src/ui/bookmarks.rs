@@ -52,6 +52,8 @@ pub(super) struct PanelActions {
     pub(super) extract_all: bool,
     /// Вырезать один отрезок — метка, напротив которой нажали ножницы.
     pub(super) extract_one: Option<i64>,
+    /// Название закладки, которое просят положить в буфер обмена.
+    pub(super) copy_name: Option<String>,
 }
 
 pub fn show(app: &mut PithApp, ctx: &egui::Context) {
@@ -208,71 +210,108 @@ fn show_row(
         ui.spacing_mut().item_spacing.x = 6.0;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .add(egui::Button::new(icons::DELETE.text()).frame(false))
-                .on_hover_text(tr!("Убрать", "Remove"))
-                .clicked()
-            {
-                actions.remove = Some(bookmark.time_ms);
-            }
-
-            if ui
-                .add(egui::Button::new(icons::EDIT.text()).frame(false))
-                .on_hover_text(tr!("Переименовать", "Rename"))
-                .clicked()
-            {
-                actions.rename = Some(bookmark.time_ms);
-            }
-
-            // Вырезать только этот отрезок: резать весь список ради одной
-            // метки — это лишние файлы и минуты ожидания.
-            if ui
-                .add_enabled(
-                    can_extract,
-                    egui::Button::new(icons::CUT.text().color(theme::PANEL_ACCENT)).frame(false),
-                )
-                .on_hover_text(tr!("Вырезать этот отрезок", "Cut this fragment"))
-                .on_disabled_hover_text(tr!(
-                    "Нужен ffmpeg.exe рядом с плеером",
-                    "ffmpeg.exe must sit next to the player"
-                ))
-                .clicked()
-            {
-                actions.extract_one = Some(bookmark.time_ms);
-            }
+            show_row_buttons(ui, bookmark, can_extract, actions);
 
             // Остаток строки — под время и название.
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(TIME_COLUMN, ui.available_height()),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        ui.label(
-                            egui::RichText::new(format_time(bookmark.seconds()))
-                                .color(theme::PANEL_MUTED)
-                                .monospace(),
-                        );
-                    },
-                );
-
-                let title = bookmark.name.clone().unwrap_or_default();
-                let row = ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(title).color(theme::TEXT_PRIMARY))
-                            .truncate()
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                if row.clicked() {
-                    actions.jump_to = Some(bookmark.seconds());
-                }
-
-                row.context_menu(|ui| {
-                    show_move_menu(ui, bookmark.time_ms, others, actions);
-                });
+                show_row_text(ui, bookmark, others, actions);
             });
         });
+    });
+}
+
+/// Кнопки строки: убрать, переименовать, вырезать, скопировать название.
+fn show_row_buttons(
+    ui: &mut egui::Ui,
+    bookmark: &pith_store::TimeBookmark,
+    can_extract: bool,
+    actions: &mut PanelActions,
+) {
+    if ui
+        .add(egui::Button::new(icons::DELETE.text()).frame(false))
+        .on_hover_text(tr!("Убрать", "Remove"))
+        .clicked()
+    {
+        actions.remove = Some(bookmark.time_ms);
+    }
+
+    if ui
+        .add(egui::Button::new(icons::EDIT.text()).frame(false))
+        .on_hover_text(tr!("Переименовать", "Rename"))
+        .clicked()
+    {
+        actions.rename = Some(bookmark.time_ms);
+    }
+
+    // Вырезать только этот отрезок: резать весь список ради одной
+    // метки — это лишние файлы и минуты ожидания.
+    if ui
+        .add_enabled(
+            can_extract,
+            egui::Button::new(icons::CUT.text().color(theme::PANEL_ACCENT)).frame(false),
+        )
+        .on_hover_text(tr!("Вырезать этот отрезок", "Cut this fragment"))
+        .on_disabled_hover_text(tr!(
+            "Нужен ffmpeg.exe рядом с плеером",
+            "ffmpeg.exe must sit next to the player"
+        ))
+        .clicked()
+    {
+        actions.extract_one = Some(bookmark.time_ms);
+    }
+
+    // Название закладки — обычно реплика субтитров, и её чаще всего
+    // и хотят перенести в заметки. В строке название урезано, так что
+    // переписать его глазами всё равно не выйдет.
+    let name = bookmark.name.clone().unwrap_or_default();
+
+    if ui
+        .add_enabled(
+            !name.trim().is_empty(),
+            egui::Button::new(icons::COPY.text()).frame(false),
+        )
+        .on_hover_text(tr!("Скопировать название", "Copy the name"))
+        .on_disabled_hover_text(tr!("Название пустое", "The name is empty"))
+        .clicked()
+    {
+        actions.copy_name = Some(name);
+    }
+}
+
+/// Время и название закладки: нажатие переводит воспроизведение к метке.
+fn show_row_text(
+    ui: &mut egui::Ui,
+    bookmark: &pith_store::TimeBookmark,
+    others: &[String],
+    actions: &mut PanelActions,
+) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(TIME_COLUMN, ui.available_height()),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.label(
+                egui::RichText::new(format_time(bookmark.seconds()))
+                    .color(theme::PANEL_MUTED)
+                    .monospace(),
+            );
+        },
+    );
+
+    let title = bookmark.name.clone().unwrap_or_default();
+    let row = ui
+        .add(
+            egui::Label::new(egui::RichText::new(title).color(theme::TEXT_PRIMARY))
+                .truncate()
+                .sense(egui::Sense::click()),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    if row.clicked() {
+        actions.jump_to = Some(bookmark.seconds());
+    }
+
+    row.context_menu(|ui| {
+        show_move_menu(ui, bookmark.time_ms, others, actions);
     });
 }
 
@@ -327,5 +366,8 @@ fn apply(app: &mut PithApp, actions: PanelActions) {
     }
     if let Some(time_ms) = actions.extract_one {
         app.start_extraction_one(time_ms);
+    }
+    if let Some(name) = actions.copy_name {
+        app.copy_text_to_clipboard(&name);
     }
 }

@@ -1,4 +1,4 @@
-# Pith Player 5.1.27
+# Pith Player 5.1.38
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,95 +8,82 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.27-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.27-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.38-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.38-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
 
-## Smaller things that were in the way
+## The player no longer freezes while a file opens
 
-- **The window title is just the file name now.** Names are long, the title bar
-  is the only place a full one fits, and the program name was eating into it.
-- **A right-click no longer costs you a pause.** Clicking away to dismiss the
-  context menu used to close the menu *and* toggle playback. Now that click only
-  dismisses the menu; the next one pauses, as always.
-- **The title bar matches the player.** Windows 11 tints it with Mica — the
-  blurred content of whatever sits behind the window, so it drifted blue or
-  green depending on the wallpaper. It is now the same dark shade as the
-  control bar at the bottom.
+Opening a 4K HDR film used to stall the window for a moment — long enough to
+see it, not long enough to explain. Every stall had the same cause: the player
+asked mpv for a property and waited for the answer on the interface thread,
+while mpv was busy parsing the container and starting the decoder.
 
-## Cut clips no longer start silent
+Measured on a 4K HDR film, frame by frame:
 
-Cutting copies the picture and, by default, re-encodes the sound to AAC so that
-Adobe editors can read it. FFmpeg treats those two differently: the copied
-picture starts at the keyframe before your mark, while the re-encoded sound was
-trimmed exactly at the mark. Measured on a 4K film, the picture began at 0.08 s
-and the sound only at 2.06 s — the first two seconds had no audio, and the
-opening looked jerky because the player had nothing to sync the picture to.
-Now both start together, within 0.02 s of each other.
+| What was asked | When | Frozen for |
+|---|---|---|
+| Playback state, six properties per frame | before the file loaded | 488 ms |
+| Playback state | right after it loaded | 200 ms |
+| Decoder mode, for the log | on load | 227 ms |
+| Audio summary, for the log | on load | 227 ms |
+| Track list | on load | 233 ms |
+| Subtitle lines, twice per frame | after load | 197 ms |
+| Frame size | switching files in a running player | 198 ms |
 
-Two more things came out of the same investigation:
+Position, volume, subtitle lines and frame size now arrive from mpv as events —
+nothing is polled any more. The track list is read in one property instead of
+seven per track. Everything else waits for the moment mpv says it has started
+playing, when the same questions cost single milliseconds.
 
-- **Clips are closer to the length you asked for.** The player used to look up
-  the nearest keyframe itself and start exactly there — which made FFmpeg step
-  back one keyframe further. An 18-second clip came out 20.2 s long; it is now
-  19.0 s, and one lookup per batch is gone with it.
-- **No more phantom chapter track.** FFmpeg copied the source film's chapters
-  into every clip as a text track spanning the whole original — a ten-minute
-  track inside an eighteen-second file.
+No frame of the interface now runs over budget while a file opens, in either
+direction: launching with a file, or dropping a new file into a running player.
 
-## The installer now fetches FFmpeg
+## Seeking with the arrow keys
 
-Cutting clips is done by FFmpeg, and the installer used to carry whatever copy
-the build machine had — which turned out to be a redirecting shim, useless on
-anyone else's computer. The installer now offers to download FFmpeg itself:
-the build recommended on ffmpeg.org, verified against the checksum published
-next to it. Decline it and the player still installs and plays; only cutting
-stays unavailable.
+- **Hold an arrow and it keeps seeking** until you let go. The step follows the
+  modifier, so you get three speeds.
+- **Shift + arrows now step by a minute, Alt + arrows by a second**, plain
+  arrows by five seconds.
+- **A burst of presses no longer queues up.** Twelve quick presses used to take
+  1.47 s to settle and moved the picture twice; now it is 0.67 s and the picture
+  follows every press. A single press went from 307 ms to about 170 ms.
 
-## Opening a file is twice as fast
+The old measurement of seek time was lying: it closed on the next interface
+frame instead of waiting for mpv, and reported single milliseconds. It now
+closes when mpv reports it is ready to play from the new spot.
 
-Measured from process start to the first frame on screen: **1.4 s → 0.7 s** for
-a 20 GB 4K film, and the same for a small clip — file size barely mattered,
-because the time was going elsewhere.
+## The window opens the way you left it
 
-- The player wrote its port into `instance.port` and cleaned it up in a place
-  the code never reached. Every launch but the very first waited out the full
-  connection timeout to a port that was long gone: **610 ms of pure nothing.**
-- Subtitle lines were polled from mpv on every frame, including while the file
-  was still opening. The engine is busy then, and the answer takes its time —
-  **283 ms of frozen interface** for lines that did not exist yet.
-- The seek preview started itself in the first frame: a second mpv instance and
-  a thumbnail mosaic competing for the processor exactly while the main engine
-  was opening the file. Now they start when you first hover the seek bar.
+- **Maximized stays maximized.** Close the player full screen and it opens full
+  screen — instantly, with no animation and no rebuild of the interface. It is
+  created at exactly the rectangle Windows itself would use, down to the pixel.
+- **The title-bar button gives back your window.** Restoring returns the size
+  *and* position you had before maximizing, not something near-fullscreen.
+- **Nothing shifts after the window appears.** Frame-by-frame capture of the
+  first two seconds shows no movement at all — only the video and the clock.
 
-## The window no longer jumps
+## Fragments panel
 
-It used to appear at the previous session's size and half a second later snap
-to the shape of the video. The shape is now read from the container before the
-window is created, so it opens correct from the first moment — a vertical video
-opens in a vertical window straight away.
+- **Copy the name of a bookmark** with the new button next to the scissors. The
+  name is usually a line of dialogue, and it is truncated in the list, so it
+  could not be copied by hand.
+- **Pin the panel.** The pin in the corner keeps the panel open when you click
+  the video; grey means it closes as before.
 
-## Language fixes
+## Subtitle lines make better bookmark names
 
-- Choosing English in the installer now actually gives you an English player.
-- On a clean machine the player follows the language of Windows.
-- The default fragment list reads as **Main**, not «Основной».
-
-## How the cutting works
-
-A video file is a box with two already-compressed streams inside — picture and
-sound. Most tools save a piece by unpacking those streams and packing them
-again: minutes of processor work and a little quality lost every time.
-
-Pith Player copies the compressed bytes of the chosen range straight into a new
-box. Nothing is decoded, nothing is compressed again, so the disk does the work
-and a 20-second clip out of a 4K film lands in about a second — looking exactly
-like the original, because it is the original.
-
-The clip starts at the nearest keyframe before your mark, sometimes a fraction
-of a second early; that is the price of the speed. Turn on *Re-encode instead
-of remuxing* when you need the start on the exact frame.
+- **Dashes no longer come along.** Dialogue lines start with a dash — hyphen,
+  en dash, em dash, whichever the subtitler used — and it ended up in the
+  bookmark name, in the file name of the clip, and in the clipboard.
+  `- Hi. Hi. / - (sloshing)` now becomes `Hi. Hi. (sloshing)`. A dash inside a
+  sentence is punctuation and is left alone.
+- **A bookmark set in a pause takes the line that just ended**, if it faded less
+  than eight seconds ago. After a longer silence the bookmark stays unnamed
+  rather than borrowing an unrelated line.
+- **The notice no longer breaks into a column.** A long name used to arrive one
+  word per line.

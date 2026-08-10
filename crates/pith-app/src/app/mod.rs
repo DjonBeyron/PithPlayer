@@ -23,6 +23,7 @@ mod playback;
 mod preview;
 mod preview_source;
 mod search;
+mod seek;
 mod subtitle_style;
 mod subtitles;
 mod viewport;
@@ -56,6 +57,12 @@ pub struct PithApp {
     window_title: Option<String>,
     /// Последнее известное положение окна — запоминается при закрытии.
     window_geometry: Option<pith_store::WindowGeometry>,
+    /// Окно занимает весь экран — развёрнуто кнопкой или открыто таким.
+    window_maximized: bool,
+    /// Системе ещё не сказано, что окно открыто развёрнутым.
+    announce_maximized_pending: bool,
+    /// Открытие файла ещё не доделано — ждём первого кадра.
+    playback_started_pending: bool,
     /// Нужно проверить, что восстановленное окно видно на экране.
     window_position_pending: bool,
     /// Окно восстановлено из настроек, и первый файл его не переставляет.
@@ -64,6 +71,14 @@ pub struct PithApp {
     seek_pending: bool,
     /// Куда перематываем. Показывается вместо позиции mpv, пока он догоняет.
     seek_target: Option<f64>,
+    /// Перемотка с клавиатуры отправлена и ещё не завершилась.
+    key_seek_in_flight: bool,
+    /// Куда просят перемотать, пока движок занят прошлой перемоткой.
+    key_seek_wanted: Option<f64>,
+    /// Следующее место брать грубо, по опорному кадру: клавишу жмут подряд.
+    key_seek_rough: bool,
+    /// Последняя перемотка была грубой — место нужно довести точно.
+    key_seek_needs_exact: bool,
     /// Куда нужно перемотать, когда движок освободится.
     scrub_wanted: Option<f64>,
     /// Перемотка отправлена и ещё не завершилась.
@@ -105,6 +120,9 @@ pub struct PithApp {
     data_paths: DataPaths,
     /// Текущие реплики субтитров.
     subtitle_text: SubtitleText,
+    /// Последняя прозвучавшая реплика — из неё берётся название закладки,
+    /// поставленной в тишине между репликами.
+    last_subtitle: Option<subtitles::RecentLine>,
     /// Всплывающее уведомление.
     notice: Option<Notice>,
     /// Почему не играет текущий файл.
@@ -230,6 +248,9 @@ impl PithApp {
             show_metrics: settings.show_metrics && !args.hide_metrics,
             window_title: None,
             window_geometry: settings.window,
+            window_maximized: settings.window_maximized,
+            announce_maximized_pending: settings.window_maximized,
+            playback_started_pending: false,
             // Окно уже создано с сохранёнными координатами: проверим
             // в первом же кадре, что оно попало на существующий экран.
             window_position_pending: settings.window.is_some(),
@@ -241,6 +262,10 @@ impl PithApp {
             restored_geometry_pending: true,
             seek_pending: false,
             seek_target: None,
+            key_seek_in_flight: false,
+            key_seek_wanted: None,
+            key_seek_rough: false,
+            key_seek_needs_exact: false,
             scrub_wanted: None,
             scrub_in_flight: false,
             scrub_sent: None,
@@ -261,6 +286,7 @@ impl PithApp {
             settings,
             data_paths,
             subtitle_text: SubtitleText::default(),
+            last_subtitle: None,
             notice: None,
             playback_error: None,
             frame_time: 0.0,

@@ -134,19 +134,7 @@ impl PithApp {
         for event in engine.pump_events() {
             match event {
                 EngineEvent::FileLoaded => {
-                    engine.refresh_video_size();
-                    let active_hwdec = engine.active_hwdec();
-                    let audio = engine.audio_summary();
-                    let state = engine.state();
-                    tracing::info!(
-                        width = state.display_width,
-                        height = state.display_height,
-                        hwdec_active = %active_hwdec,
-                        // Звук в логе: разбор жалоб вида «стало играть в моно»
-                        // без него сводится к гаданию.
-                        звук = %audio,
-                        "файл загружен"
-                    );
+                    tracing::info!("файл загружен");
                     file_loaded = true;
                 }
                 EngineEvent::EndFile => tracing::debug!("файл закончился"),
@@ -156,15 +144,27 @@ impl PithApp {
             }
         }
 
-        // Пока идёт перетаскивание, свойства mpv не трогаем: он занят
-        // перемоткой, и каждый запрос ждёт её окончания — двести
-        // миллисекунд на кадр по замеру.
-        if !self.scrubbing {
-            engine.refresh_state();
-        }
+        // Позиция, громкость и прочее приходят событиями подписки
+        // (pith-mpv/observe.rs) — спрашивать mpv не нужно.
 
         if seek_done {
+            // Замер закрывается первым: следующая перемотка из очереди
+            // уходит тут же и завела бы отсчёт заново. Прежде замер
+            // закрывался следующим кадром и показывал единицы
+            // миллисекунд вместо настоящего ожидания.
+            if self.seek_pending {
+                self.seek_pending = false;
+                self.metrics.mark_seek_done();
+            }
+
             self.scrub_finished();
+            // Движок свободен — уходит следующее место из очереди.
+            self.seek_finished();
+
+            // Этим же событием mpv сообщает, что пошёл играть с нового
+            // места. После открытия файла оно приходит, когда декодер
+            // и звук уже подняты, — самое время дочитать у него остальное.
+            self.finish_playback_start();
         }
 
         self.settle_seek_target();
@@ -180,10 +180,15 @@ impl PithApp {
             self.fit_window_pending = true;
             self.window_resized_by_user = false;
             self.prepare_resume_offer();
-            self.select_tracks_by_tags();
-            self.refresh_tracks();
+            // Дорожки, звук и режим декодирования — всё это спрашивается
+            // у mpv, а на загрузке он занят и отвечает не сразу. Отложим
+            // до первого кадра (замер: 242 мс на выборе дорожек).
+            self.playback_started_pending = true;
             // Субтитры прошлого файла к новому отношения не имеют.
             self.reset_search();
+            self.last_subtitle = None;
+            // Незаконченная перемотка прошлого файла к новому не относится.
+            self.forget_seek();
             // У нового видео свои поля — прежняя обрезка к нему не подходит.
             self.forget_crop();
         }
@@ -193,12 +198,6 @@ impl PithApp {
         self.poll_crop();
         self.refresh_subtitle_text();
         self.store_position_periodically();
-
-        // Перемотка считается завершённой, когда mpv отдал новую позицию.
-        if self.seek_pending {
-            self.seek_pending = false;
-            self.metrics.mark_seek_done();
-        }
     }
 
     /// Запускает движок и подключает его к контексту OpenGL окна.

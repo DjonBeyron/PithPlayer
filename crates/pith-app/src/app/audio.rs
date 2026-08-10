@@ -25,6 +25,37 @@ impl PithApp {
             .unwrap_or_else(|| AUTO_DEVICE.to_string())
     }
 
+    /// Доделывает открытие файла, когда пошла картинка.
+    ///
+    /// Всё здесь спрашивает у mpv, а спрашивать занятый mpv дорого: запрос
+    /// ждёт ответа прямо в потоке интерфейса, и окно на это время замирает.
+    /// На загрузке 4К-файла замеры дали 242 мс на выборе дорожек, 227 мс
+    /// на режиме декодирования и столько же на сводке по звуку — это и была
+    /// заминка при старте файла (PLAN.md §6.14). К первому показанному кадру
+    /// mpv уже свободен, и те же запросы стоят единицы миллисекунд.
+    ///
+    /// Дорожки к этому мигу выбраны самим mpv по `alang`/`slang`, так что
+    /// отсрочка меняет разве что уточнение выбора по нашим правилам тегов.
+    pub(super) fn finish_playback_start(&mut self) {
+        if !self.playback_started_pending {
+            return;
+        }
+        self.playback_started_pending = false;
+
+        self.select_tracks_by_tags();
+        self.refresh_tracks();
+
+        let Some(engine) = self.engine.as_ref() else {
+            return;
+        };
+
+        tracing::info!(
+            hwdec_active = %engine.active_hwdec(),
+            звук = %engine.audio_summary(),
+            "воспроизведение пошло"
+        );
+    }
+
     /// Выключен ли звук.
     pub fn is_muted(&self) -> bool {
         self.engine

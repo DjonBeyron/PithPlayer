@@ -8,7 +8,7 @@
 use crate::app::PithApp;
 use crate::theme;
 use crate::tr;
-use crate::ui::{icons, lists};
+use crate::ui::{icons, lists, panel_output_dir};
 
 /// Высота плашек в строке выбора списка.
 const BOX_HEIGHT: f32 = 36.0;
@@ -25,11 +25,11 @@ const VERSION_OPACITY: f32 = 0.5;
 /// Ширина кнопки с шестерёнкой.
 const GEAR_WIDTH: f32 = 40.0;
 
+/// Размер кнопки-булавки в углу шапки.
+const PIN_BUTTON: f32 = 26.0;
+
 /// Отступ внутри подсказки о пустом списке.
 const CARD_PADDING: i8 = 12;
-
-/// Размер квадратных кнопок в строке с папкой.
-const DIR_BUTTON: f32 = 26.0;
 
 /// Промежуток между парами «подпись — число».
 const NUMBERS_GAP: f32 = 28.0;
@@ -51,7 +51,10 @@ pub fn show(app: &mut PithApp, ui: &mut egui::Ui) {
                 .strong(),
         );
 
-        show_version(ui);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            show_pin(app, ui);
+            show_version(ui);
+        });
     });
 
     if !app.has_open_file() {
@@ -79,14 +82,51 @@ pub fn show(app: &mut PithApp, ui: &mut egui::Ui) {
 /// о неполадке, — и мозолить глаза при каждом взгляде на панель она
 /// не должна.
 fn show_version(ui: &mut egui::Ui) {
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.label(
-            egui::RichText::new(format!("v{}", crate::VERSION))
-                .color(theme::PANEL_MUTED.gamma_multiply(VERSION_OPACITY))
-                .size(12.0),
+    ui.label(
+        egui::RichText::new(format!("v{}", crate::VERSION))
+            .color(theme::PANEL_MUTED.gamma_multiply(VERSION_OPACITY))
+            .size(12.0),
+    )
+    .on_hover_text(tr!("Версия плеера", "Player version"));
+}
+
+/// Булавка в углу шапки: закрепить панель.
+///
+/// Жёлтая — панель остаётся открытой, что бы ни нажимали мимо неё.
+/// Серая — обычное поведение: нажатие по видео её убирает. Закрепление
+/// жило только в меню, а нужно оно как раз тогда, когда панель перед
+/// глазами и лезть за ним в меню долго.
+fn show_pin(app: &mut PithApp, ui: &mut egui::Ui) {
+    let pinned = app.bookmarks_panel_pinned();
+
+    let color = if pinned {
+        theme::PANEL_ACCENT
+    } else {
+        theme::PANEL_MUTED
+    };
+
+    let hint = if pinned {
+        tr!(
+            "Открепить: панель снова закроется нажатием мимо неё",
+            "Unpin: the panel will close again on a click outside"
         )
-        .on_hover_text(tr!("Версия плеера", "Player version"));
-    });
+    } else {
+        tr!(
+            "Закрепить: панель не закроется нажатием мимо неё",
+            "Pin: the panel won't close on a click outside"
+        )
+    };
+
+    let pin = egui::Button::new(icons::PIN.text().color(color)).frame(false);
+
+    if ui
+        .add_sized(egui::vec2(PIN_BUTTON, PIN_BUTTON), pin)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(hint)
+        .clicked()
+    {
+        app.toggle_panel_pin();
+    }
 }
 
 /// Подсказка вместо списка, когда закладок ещё нет.
@@ -199,108 +239,7 @@ fn show_details(app: &mut PithApp, ui: &mut egui::Ui) {
     }
 
     ui.add_space(GAP);
-    show_output_dir(app, ui);
-}
-
-/// Папка вывода: показывается и меняется на месте.
-fn show_output_dir(app: &mut PithApp, ui: &mut egui::Ui) {
-    let Some(dir) = app.fragments_output_dir() else {
-        return;
-    };
-
-    // Своя папка списка или общая из настроек — видно по подсказке.
-    let own = app
-        .current_bookmarks()
-        .and_then(|video| video.active())
-        .is_some_and(|list| list.output_dir.is_some());
-
-    let mut choose = false;
-    let mut reset = false;
-
-    ui.horizontal(|ui| {
-        style_boxes(ui);
-        ui.spacing_mut().item_spacing.x = 4.0;
-
-        // Кнопка сброса нужна, только когда у списка своя папка.
-        let reserved = if own { 2.0 * DIR_BUTTON } else { DIR_BUTTON };
-        let width = (ui.available_width() - reserved - 12.0).max(60.0);
-
-        // Путь рисуется кистью с обрезкой хвоста: длинная строка в кнопке
-        // раздвигала всю панель — область подстраивается под содержимое.
-        let (rect, response) =
-            ui.allocate_exact_size(egui::vec2(width, DIR_BUTTON), egui::Sense::click());
-
-        paint_path(ui, rect, &dir.to_string_lossy(), response.hovered());
-
-        choose |= response
-            .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .on_hover_text(tr!(
-                format!(
-                    "{}\nНажмите, чтобы выбрать другую папку",
-                    dir.to_string_lossy()
-                ),
-                format!("{}\nClick to choose another folder", dir.to_string_lossy())
-            ))
-            .clicked();
-
-        choose |= ui
-            .add_sized(
-                egui::vec2(DIR_BUTTON, DIR_BUTTON),
-                egui::Button::new(icons::FOLDER.text().color(theme::TEXT_PRIMARY)),
-            )
-            .on_hover_text(tr!(
-                "Выбрать папку для отрезков",
-                "Choose the folder for fragments"
-            ))
-            .clicked();
-
-        if own {
-            reset |= ui
-                .add_sized(
-                    egui::vec2(DIR_BUTTON, DIR_BUTTON),
-                    egui::Button::new(icons::DELETE.text().color(theme::PANEL_MUTED)),
-                )
-                .on_hover_text(tr!(
-                    "Вернуть общую папку из настроек",
-                    "Back to the shared folder from settings"
-                ))
-                .clicked();
-        }
-    });
-
-    if choose {
-        app.choose_active_list_output_dir();
-    } else if reset {
-        app.set_active_list_output_dir(None);
-    }
-}
-
-/// Путь к папке: одной строкой, лишнее с конца отсекается.
-fn paint_path(ui: &egui::Ui, rect: egui::Rect, path: &str, hovered: bool) {
-    let painter = ui.painter();
-
-    if hovered {
-        painter.rect_filled(rect, 6.0, theme::PANEL_ELEMENT_HOVER);
-    }
-
-    let mut job = egui::text::LayoutJob::simple_singleline(
-        path.to_owned(),
-        egui::FontId::proportional(12.0),
-        theme::PANEL_MUTED,
-    );
-
-    job.wrap.max_width = rect.width() - 8.0;
-    job.wrap.max_rows = 1;
-    job.wrap.break_anywhere = true;
-
-    let galley = painter.layout_job(job);
-    let top = rect.center().y - galley.size().y / 2.0;
-
-    painter.galley(
-        egui::pos2(rect.left() + 4.0, top),
-        galley,
-        theme::PANEL_MUTED,
-    );
+    panel_output_dir::show(app, ui);
 }
 
 /// Подпись, поле с числом и единица — всё в одну строку.

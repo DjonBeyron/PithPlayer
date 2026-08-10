@@ -33,7 +33,13 @@ winreg = "0.52"
 # не выставляют, а системный отливает цветом обоев (см. caption.rs).
 # Оба крейта уже в дереве зависимостей — их тянет сам eframe.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    # Рабочая область экрана: по ней открывается окно, закрытое развёрнутым
+    # (screen.rs).
+    "Win32_Graphics_Gdi",
+] }
 raw-window-handle = "0.6"
 
 [dev-dependencies]

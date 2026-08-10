@@ -9,6 +9,12 @@ use pith_store::tag_score;
 
 use super::PithApp;
 
+/// Сколько секунд после реплики она ещё годится в название закладки.
+///
+/// Восьми хватает на паузу между репликами; за более долгую тишину
+/// действие уходит далеко, и старая фраза закладку только запутает.
+const RECENT_SUBTITLE_SEC: f64 = 8.0;
+
 /// Текущие реплики субтитров.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SubtitleText {
@@ -108,7 +114,7 @@ impl PithApp {
             return;
         };
 
-        let tracks = engine.tracks();
+        let tracks = crate::slow::probe("список дорожек у mpv", || engine.tracks());
         if tracks.is_empty() {
             return;
         }
@@ -147,15 +153,17 @@ impl PithApp {
             return;
         };
 
-        if let Some(id) = main {
-            engine.set_subtitle_track(Some(id));
-        }
-        if let Some(id) = secondary {
-            engine.set_secondary_subtitle_track(Some(id));
-        }
-        if let Some(id) = audio_choice {
-            engine.set_audio_track(Some(id));
-        }
+        crate::slow::probe("включение дорожек", || {
+            if let Some(id) = main {
+                engine.set_subtitle_track(Some(id));
+            }
+            if let Some(id) = secondary {
+                engine.set_secondary_subtitle_track(Some(id));
+            }
+            if let Some(id) = audio_choice {
+                engine.set_audio_track(Some(id));
+            }
+        });
 
         tracing::info!(
             ?main,
@@ -168,35 +176,19 @@ impl PithApp {
 
     /// Обновляет текущие реплики субтитров.
     ///
-    /// Во время перемотки не спрашиваем вовсе: mpv перестраивает дорожку
-    /// субтитров после каждого прыжка, и запрос `sub-text` блокирует поток
-    /// интерфейса — замер показал 284 мс на кадр. Именно от этого
-    /// перетаскивание ползунка «залипало» первые секунды.
-    ///
-    /// По той же причине молчим, пока файл открывается: mpv занят разбором
-    /// контейнера и заводит декодер, ответа на запрос свойства приходится
-    /// ждать — замер показал 283 мс замороженного интерфейса. Реплик в это
-    /// время всё равно нет: дорожки ещё не выбраны.
+    /// Реплики приходят подпиской на свойства mpv, спрашивать его не нужно:
+    /// прежде их читали дважды на каждом кадре, и на занятом mpv это стоило
+    /// сотен миллисекунд замершего окна — при открытии файла и первые
+    /// секунды после перемотки (PLAN.md §6.14).
     pub(super) fn refresh_subtitle_text(&mut self) {
-        if self.scrubbing || self.scrub_in_flight || self.seek_target.is_some() {
-            return;
-        }
-
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
 
-        if !engine.state().file_loaded {
-            return;
-        }
-
-        // Делается каждый кадр: два обращения к свойствам mpv.
-        let fresh = crate::slow::probe("чтение реплик субтитров", || {
-            SubtitleText {
-                main: engine.subtitle_text(),
-                secondary: engine.secondary_subtitle_text(),
-            }
-        });
+        let fresh = SubtitleText {
+            main: engine.subtitle_text(),
+            secondary: engine.secondary_subtitle_text(),
+        };
 
         // Смена реплики — редкое событие, логировать его дёшево и полезно:
         // сразу видно, доходят ли субтитры от mpv.
@@ -208,12 +200,44 @@ impl PithApp {
             );
         }
 
+        // Последняя прозвучавшая реплика запоминается: закладку ставят
+        // и в тишине между репликами, а название ей всё равно нужно.
+        if let Some(line) = fresh.main.clone().or_else(|| fresh.secondary.clone()) {
+            self.last_subtitle = Some(RecentLine {
+                text: line,
+                at: engine.state().position,
+            });
+        }
+
         self.subtitle_text = fresh;
     }
 
     pub fn subtitle_text(&self) -> &SubtitleText {
         &self.subtitle_text
     }
+
+    /// Реплика, прозвучавшая только что, — на случай тишины.
+    ///
+    /// Ставя закладку в паузе между репликами, пользователь имеет в виду
+    /// ту, что сейчас отзвучала, а не пустое название. Давняя реплика
+    /// не годится: за полминуты тишины действие ушло далеко. Реплики
+    /// «из будущего» не берём — их плеер ещё не видел.
+    pub(super) fn recent_subtitle_line(&self) -> Option<String> {
+        let recent = self.last_subtitle.as_ref()?;
+        let now = self.engine.as_ref()?.state().position;
+        let elapsed = now - recent.at;
+
+        (0.0..=RECENT_SUBTITLE_SEC)
+            .contains(&elapsed)
+            .then(|| recent.text.clone())
+    }
+}
+
+/// Реплика, которую плеер показывал последней.
+pub struct RecentLine {
+    pub text: String,
+    /// Позиция воспроизведения, на которой её видели.
+    pub at: f64,
 }
 
 /// Самая подходящая дорожка по тегам.

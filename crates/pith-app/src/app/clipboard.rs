@@ -82,6 +82,7 @@ impl PithApp {
 
     /// Кладёт текст в буфер обмена и показывает уведомление.
     pub fn copy_text_to_clipboard(&mut self, text: &str) {
+        let text = crate::text::strip_leading_dashes(text);
         let text = text.trim();
         if text.is_empty() {
             return;

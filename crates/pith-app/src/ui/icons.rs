@@ -147,6 +147,18 @@ pub const CUT: Icon = Icon {
     fallback: Fallback::Word("Вырезать", "Cut"),
 };
 
+/// Скопировать название закладки — два листа.
+pub const COPY: Icon = Icon {
+    glyph: "\u{E8C8}",
+    fallback: Fallback::Word("Копировать", "Copy"),
+};
+
+/// Закрепить панель — булавка.
+pub const PIN: Icon = Icon {
+    glyph: "\u{E718}",
+    fallback: Fallback::Sign("📌"),
+};
+
 /// Раскрыть список — уголок вниз.
 pub const CHEVRON: Icon = Icon {
     glyph: "\u{E70D}",

@@ -46,6 +46,10 @@ pub struct PlaybackState {
     pub display_width: i64,
     /// Отображаемая высота кадра с учётом поворота (`video-params/dh`).
     pub display_height: i64,
+    /// Текущая реплика основных субтитров.
+    pub subtitle: Option<String>,
+    /// Текущая реплика вторых субтитров.
+    pub secondary_subtitle: Option<String>,
 }
 
 impl PlaybackState {
@@ -98,6 +102,7 @@ impl Engine {
     /// приложение должно показать понятное сообщение, а не падать.
     pub fn new(options: &EngineOptions) -> Result<Self> {
         let engine = Self::with_options(options.to_mpv_options())?;
+        engine.observe_playback_properties();
         tracing::info!(hwdec = options.hwdec.as_mpv_value(), "движок mpv запущен");
 
         Ok(Self {
@@ -281,37 +286,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Обновляет состояние из свойств mpv.
-    ///
-    /// Недоступное свойство — не ошибка: mpv ещё не готов его отдать,
-    /// оставляем прежнее значение.
-    pub fn refresh_state(&mut self) {
-        if let Ok(v) = self.mpv.get_property::<f64>("time-pos") {
-            self.state.position = v;
-        }
-        if let Ok(v) = self.mpv.get_property::<f64>("duration") {
-            self.state.duration = v;
-        }
-        if let Ok(v) = self.mpv.get_property::<bool>("pause") {
-            self.state.paused = v;
-        }
-        if let Ok(v) = self.mpv.get_property::<i64>("volume") {
-            self.state.volume = v;
-        }
-        if let Ok(v) = self.mpv.get_property::<bool>("mute") {
-            self.state.muted = v;
-        }
-        if let Ok(v) = self.mpv.get_property::<f64>("speed") {
-            self.state.speed = v;
-        }
-    }
-
-    /// Запоминает размеры кадра. Заполняется разбором свойств в `video.rs`.
-    pub(crate) fn set_display_size(&mut self, width: i64, height: i64) {
-        self.state.display_width = width;
-        self.state.display_height = height;
-    }
-
     /// Останавливает воспроизведение и выгружает файл.
     ///
     /// Обязательно вызывать перед завершением работы: пока mpv декодирует
@@ -341,10 +315,6 @@ impl Engine {
 
     pub(crate) fn property_i64(&self, name: &str) -> Option<i64> {
         self.mpv.get_property::<i64>(name).ok()
-    }
-
-    pub(crate) fn property_bool(&self, name: &str) -> Option<bool> {
-        self.mpv.get_property::<bool>(name).ok()
     }
 
     /// Записывает строковое свойство.

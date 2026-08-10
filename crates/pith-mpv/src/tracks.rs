@@ -73,38 +73,43 @@ impl Track {
     }
 }
 
+/// Дорожка в том виде, в каком её отдаёт mpv.
+///
+/// Лишние поля пропускаются: их у mpv два десятка, а нужны семь.
+#[derive(serde::Deserialize)]
+struct RawTrack {
+    id: i64,
+    #[serde(rename = "type")]
+    kind: String,
+    title: Option<String>,
+    lang: Option<String>,
+    #[serde(default)]
+    default: bool,
+    #[serde(default)]
+    forced: bool,
+    #[serde(default)]
+    selected: bool,
+}
+
 impl Engine {
+    /// Весь список дорожек одной строкой, как его отдаёт mpv.
+    pub fn track_list_json(&self) -> Option<String> {
+        self.property_string("track-list").ok()
+    }
+
     /// Список дорожек файла.
+    ///
+    /// Читается одним свойством: mpv отдаёт весь список строкой JSON.
+    /// Прежде поля запрашивались поштучно — семь запросов на дорожку,
+    /// полсотни на фильм, — и на занятом mpv это стоило 233 мс замершего
+    /// окна при открытии файла (PLAN.md §6.14). Один запрос вместо
+    /// полусотни укладывается в единицы миллисекунд.
     pub fn tracks(&self) -> Vec<Track> {
-        let count = self.property_i64("track-list/count").unwrap_or(0);
+        let Some(json) = self.track_list_json() else {
+            return Vec::new();
+        };
 
-        (0..count).filter_map(|i| self.read_track(i)).collect()
-    }
-
-    fn read_track(&self, index: i64) -> Option<Track> {
-        let kind = TrackKind::from_mpv(&self.property_string_at(index, "type")?)?;
-        let id = self.property_i64(&format!("track-list/{index}/id"))?;
-
-        Some(Track {
-            id,
-            kind,
-            title: self.property_string_at(index, "title"),
-            lang: self.property_string_at(index, "lang"),
-            default: self.property_bool_at(index, "default"),
-            forced: self.property_bool_at(index, "forced"),
-            selected: self.property_bool_at(index, "selected"),
-        })
-    }
-
-    fn property_string_at(&self, index: i64, field: &str) -> Option<String> {
-        self.property_string(&format!("track-list/{index}/{field}"))
-            .ok()
-            .filter(|s| !s.is_empty())
-    }
-
-    fn property_bool_at(&self, index: i64, field: &str) -> bool {
-        self.property_bool(&format!("track-list/{index}/{field}"))
-            .unwrap_or(false)
+        parse_tracks(&json)
     }
 
     /// Включает дорожку субтитров. `None` — выключить субтитры.
@@ -169,18 +174,46 @@ impl Engine {
     }
 
     /// Текущая реплика основных субтитров.
+    ///
+    /// Берётся из состояния: реплики приходят подпиской (`observe.rs`),
+    /// а не спрашиваются у mpv на каждом кадре.
     pub fn subtitle_text(&self) -> Option<String> {
-        self.non_empty_property("sub-text")
+        self.state().subtitle.clone()
     }
 
     /// Текущая реплика вторых субтитров.
     pub fn secondary_subtitle_text(&self) -> Option<String> {
-        self.non_empty_property("secondary-sub-text")
+        self.state().secondary_subtitle.clone()
     }
+}
 
-    fn non_empty_property(&self, name: &str) -> Option<String> {
-        self.property_string(name).ok().filter(|s| !s.is_empty())
-    }
+/// Разбирает список дорожек из строки JSON.
+///
+/// Битая строка означает пустой список: плеер продолжит играть, а дорожки
+/// выберет сам mpv по `alang`/`slang`. Дорожки неизвестного вида
+/// (картинки обложек, вложения) пропускаются.
+fn parse_tracks(json: &str) -> Vec<Track> {
+    let raw: Vec<RawTrack> = match serde_json::from_str(json) {
+        Ok(list) => list,
+        Err(e) => {
+            tracing::warn!(error = %e, "не удалось разобрать список дорожек");
+            return Vec::new();
+        }
+    };
+
+    raw.into_iter()
+        .filter_map(|t| {
+            Some(Track {
+                id: t.id,
+                kind: TrackKind::from_mpv(&t.kind)?,
+                title: t.title.filter(|s| !s.is_empty()),
+                lang: t.lang.filter(|s| !s.is_empty()),
+                default: t.default,
+                forced: t.forced,
+                selected: t.selected,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -235,5 +268,49 @@ mod tests {
         assert_eq!(TrackKind::from_mpv("sub"), Some(TrackKind::Subtitle));
         assert_eq!(TrackKind::from_mpv("video"), Some(TrackKind::Video));
         assert_eq!(TrackKind::from_mpv("что-то"), None);
+    }
+
+    /// Строка mpv, урезанная до нужных полей: их там два десятка.
+    const СПИСОК: &str = r#"[
+        {"id":1,"type":"video","default":true,"forced":false,"selected":true,"codec":"hevc"},
+        {"id":2,"type":"audio","title":"Surround","lang":"eng","default":true,"forced":false,"selected":true},
+        {"id":3,"type":"sub","title":"SDH","lang":"eng","default":false,"forced":false,"selected":false},
+        {"id":4,"type":"привидение","default":false,"forced":false,"selected":false}
+    ]"#;
+
+    #[test]
+    fn список_дорожек_разбирается_из_строки() {
+        let tracks = parse_tracks(СПИСОК);
+
+        // Дорожка неизвестного вида отброшена, остальные три на месте.
+        assert_eq!(tracks.len(), 3);
+
+        let sub = &tracks[2];
+        assert_eq!(sub.id, 3);
+        assert_eq!(sub.kind, TrackKind::Subtitle);
+        assert_eq!(sub.title.as_deref(), Some("SDH"));
+        assert_eq!(sub.lang.as_deref(), Some("eng"));
+        assert!(!sub.default);
+
+        let audio = &tracks[1];
+        assert_eq!(audio.kind, TrackKind::Audio);
+        assert!(audio.default);
+        assert!(audio.selected);
+    }
+
+    #[test]
+    fn дорожка_без_названия_и_языка_разбирается() {
+        let tracks = parse_tracks(r#"[{"id":1,"type":"sub","title":"","lang":""}]"#);
+
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].title, None);
+        assert_eq!(tracks[0].lang, None);
+        assert!(!tracks[0].forced);
+    }
+
+    #[test]
+    fn битая_строка_даёт_пустой_список() {
+        assert!(parse_tracks("не json").is_empty());
+        assert!(parse_tracks("").is_empty());
     }
 }

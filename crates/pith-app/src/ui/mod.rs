@@ -22,6 +22,7 @@ mod migration;
 mod notice;
 mod panel_handle;
 mod panel_head;
+mod panel_output_dir;
 mod playback_badge;
 mod preview;
 mod resume;

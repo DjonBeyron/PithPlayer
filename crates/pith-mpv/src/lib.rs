@@ -7,6 +7,7 @@ mod audio;
 mod engine;
 mod error;
 mod events;
+mod observe;
 mod options;
 mod preview;
 mod render;

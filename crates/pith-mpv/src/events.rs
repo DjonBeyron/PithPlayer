@@ -48,6 +48,10 @@ impl Engine {
                     events.push(EngineEvent::EndFile);
                 }
                 Ok(Event::PlaybackRestart) => events.push(EngineEvent::SeekDone),
+                // Новое значение свойства mpv прислал сам — забираем даром.
+                Ok(Event::PropertyChange { name, change, .. }) => {
+                    crate::observe::apply(&mut self.state, name, &change);
+                }
                 Ok(Event::Shutdown) => events.push(EngineEvent::Shutdown),
                 Ok(_) => {}
                 // Неудачу с файлом libmpv2 отдаёт не событием, а ошибкой:

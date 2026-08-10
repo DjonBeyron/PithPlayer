@@ -8,6 +8,16 @@ use crate::theme;
 /// Отступ от верхнего края окна.
 const TOP_MARGIN: f32 = 24.0;
 
+/// Размер текста уведомления.
+const FONT_SIZE: f32 = 15.0;
+
+/// Какую долю ширины окна уведомление занимает, прежде чем перенестись.
+///
+/// Ширину переноса задаём сами: свободного места у области с якорем
+/// на первом кадре ещё нет, и текст рвался по слову на строку — длинное
+/// название закладки превращалось в столбик.
+const MAX_WIDTH_FRACTION: f32 = 0.6;
+
 pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     show_playback_error(app, ctx);
 
@@ -15,6 +25,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
         return;
     };
     let text = text.to_string();
+    let wrap_width = ctx.input(|i| i.viewport_rect()).width() * MAX_WIDTH_FRACTION;
 
     egui::Area::new(egui::Id::new("notice"))
         .order(egui::Order::Tooltip)
@@ -26,16 +37,32 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                 .inner_margin(egui::Margin::symmetric(16, 10))
                 .corner_radius(6.0)
                 .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(text)
-                            .color(theme::TEXT_PRIMARY)
-                            .size(15.0),
-                    );
+                    show_text(ui, text, wrap_width);
                 });
         });
 
     // Уведомление должно погаснуть само, даже если видео на паузе.
     ctx.request_repaint_after(std::time::Duration::from_millis(200));
+}
+
+/// Строка уведомления: раскладка своя, место под неё берётся по ней же.
+///
+/// Обычная надпись переносится по свободному месту области, а у области
+/// с якорем его ровно столько, сколько она занимала прошлым кадром.
+/// Выходил замкнутый круг: узкая область — узкий текст, и длинное
+/// название закладки рассыпалось в столбик по слову на строку.
+fn show_text(ui: &mut egui::Ui, text: String, wrap_width: f32) {
+    let job = egui::text::LayoutJob::simple(
+        text,
+        egui::FontId::proportional(FONT_SIZE),
+        theme::TEXT_PRIMARY,
+        wrap_width,
+    );
+
+    let galley = ui.painter().layout_job(job);
+    let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
+
+    ui.painter().galley(rect.min, galley, theme::TEXT_PRIMARY);
 }
 
 /// Надпись посреди окна, когда файл не играет.

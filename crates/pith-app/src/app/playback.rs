@@ -76,7 +76,7 @@ impl PithApp {
     /// Перематывают обычно вслепую — стрелками, не глядя на панель.
     /// Поэтому здесь же зажигается подсказка с новым временем.
     pub fn seek_relative(&mut self, seconds: f64) {
-        let Some(engine) = self.engine.as_mut() else {
+        let Some(engine) = self.engine.as_ref() else {
             return;
         };
 
@@ -88,15 +88,8 @@ impl PithApp {
         let from = self.seek_target.unwrap_or(state.position);
         let target = (from + seconds).clamp(0.0, duration.max(0.0));
 
-        self.metrics.mark_seek_start();
-        self.seek_pending = true;
-        self.seek_target = Some(target);
         self.seek_hud_until = Some(self.frame_time + SEEK_HUD_SECONDS);
-
-        if let Err(e) = engine.seek_absolute(target) {
-            tracing::warn!(error = %e, "перемотка не удалась");
-            self.seek_pending = false;
-        }
+        self.request_seek(target);
     }
 
     /// Время для подсказки о перемотке. `None` — показывать нечего.
@@ -109,97 +102,6 @@ impl PithApp {
 
         let duration = self.engine()?.state().duration;
         Some((self.display_position(), duration))
-    }
-
-    /// Перемотка во время перетаскивания ползунка.
-    ///
-    /// Команда уходит не по таймеру, а только когда mpv отработал прошлую.
-    /// По таймеру запросы копились в очереди: картинка показывала то, что
-    /// пользователь проехал секунду назад, и перемотка выглядела рваной.
-    /// Промежуточные положения мыши просто отбрасываются — важно последнее.
-    pub fn scrub_to(&mut self, seconds: f64) {
-        // Показываем желаемое место сразу: пока mpv догоняет, ползунок
-        // должен стоять под пальцем, а не прыгать назад.
-        self.seek_target = Some(seconds);
-        self.scrub_wanted = Some(seconds);
-        self.scrubbing = true;
-
-        // На время перетаскивания останавливаем воспроизведение: иначе mpv
-        // между перемотками успевает проиграть кусок, и кадр дёргается
-        // сам по себе.
-        self.pause_for_scrub();
-        self.send_pending_scrub();
-    }
-
-    /// Отправляет отложенную перемотку, если движок освободился.
-    pub(super) fn send_pending_scrub(&mut self) {
-        if self.scrub_in_flight {
-            return;
-        }
-
-        let Some(target) = self.scrub_wanted.take() else {
-            return;
-        };
-
-        // Мышь стоит на месте — движку там уже нечего делать.
-        if self.scrub_sent == Some(target) {
-            return;
-        }
-
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        self.scrub_in_flight = true;
-        self.scrub_sent = Some(target);
-
-        if let Err(e) = engine.seek_keyframe(target) {
-            tracing::warn!(error = %e, "быстрая перемотка не удалась");
-            self.scrub_in_flight = false;
-        }
-    }
-
-    /// Отмечает, что mpv закончил перемотку и готов к следующей.
-    pub(super) fn scrub_finished(&mut self) {
-        self.scrub_in_flight = false;
-        self.send_pending_scrub();
-    }
-
-    /// Ставит воспроизведение на паузу на время перетаскивания.
-    fn pause_for_scrub(&mut self) {
-        if self.paused_by_scrub {
-            return;
-        }
-
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        if engine.state().paused {
-            return;
-        }
-
-        if engine.set_paused(true).is_ok() {
-            self.paused_by_scrub = true;
-        }
-    }
-
-    /// Возвращает воспроизведение после перетаскивания.
-    pub fn resume_after_scrub(&mut self) {
-        self.scrub_wanted = None;
-        self.scrub_sent = None;
-        self.scrubbing = false;
-
-        if !self.paused_by_scrub {
-            return;
-        }
-        self.paused_by_scrub = false;
-
-        if let Some(engine) = self.engine.as_mut()
-            && let Err(e) = engine.set_paused(false)
-        {
-            tracing::warn!(error = %e, "не удалось продолжить после перемотки");
-        }
     }
 
     /// Позиция, которую показывает интерфейс.
@@ -243,21 +145,9 @@ impl PithApp {
         }
     }
 
-    /// Перемотка на абсолютную позицию.
+    /// Перемотка на абсолютную позицию — по закладке или из поиска.
     pub fn seek_absolute(&mut self, seconds: f64) {
-        self.seek_target = Some(seconds);
-
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-
-        self.metrics.mark_seek_start();
-        self.seek_pending = true;
-
-        if let Err(e) = engine.seek_absolute(seconds) {
-            tracing::warn!(error = %e, "перемотка не удалась");
-            self.seek_pending = false;
-        }
+        self.request_seek(seconds);
     }
 
     /// Пауза или продолжение по действию пользователя.

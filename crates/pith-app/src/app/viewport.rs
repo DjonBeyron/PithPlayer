@@ -26,6 +26,16 @@ impl PithApp {
         tracing::debug!(fullscreen = self.fullscreen, "полноэкранный режим");
     }
 
+    /// Знает ли mpv форму кадра.
+    ///
+    /// У аудиофайла её не будет никогда — подгонка так и останется
+    /// в ожидании, и это правильно: трогать окно там нечем.
+    fn video_size_known(&self) -> bool {
+        self.engine
+            .as_ref()
+            .is_some_and(|e| e.state().display_width > 0 && e.state().display_height > 0)
+    }
+
     /// Подгоняет окно под форму видео.
     ///
     /// Любое сомнение — окно не трогаем: mpv сам вписывает кадр по
@@ -34,9 +44,24 @@ impl PithApp {
         if !self.fit_window_pending {
             return;
         }
+
+        // Размеры кадра приходят подпиской и позже загрузки: mpv называет
+        // их, когда настроит вывод. Пока их нет, подгонку не отменяем,
+        // а ждём — иначе видео другой формы открывалось бы с полями.
+        if !self.video_size_known() {
+            return;
+        }
+
         self.fit_window_pending = false;
 
-        if !self.fit_window_enabled || self.fullscreen || self.window_resized_by_user {
+        // Развёрнутое окно не трогаем наравне с полноэкранным (PLAN.md §6.12):
+        // подгонка сворачивала его обратно, и плеер, закрытый развёрнутым,
+        // открывался обычным окном.
+        if !self.fit_window_enabled
+            || self.fullscreen
+            || self.window_maximized
+            || self.window_resized_by_user
+        {
             return;
         }
 

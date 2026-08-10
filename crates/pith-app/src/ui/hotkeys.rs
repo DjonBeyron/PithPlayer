@@ -100,10 +100,12 @@ fn collect_actions(i: &egui::InputState) -> Actions {
         ..Default::default()
     };
 
-    // Шаг перемотки зависит от модификатора: как в v4.
-    let step = if i.modifiers.ctrl {
+    // Шаг перемотки зависит от модификатора: Shift — крупный, Alt —
+    // мелкий. Ctrl оставлен крупным заодно с Shift: схема из v4, и руки
+    // у неё уже наработаны.
+    let step = if i.modifiers.shift || i.modifiers.ctrl {
         SEEK_STEP_LARGE
-    } else if i.modifiers.shift {
+    } else if i.modifiers.alt {
         SEEK_STEP_SMALL
     } else {
         SEEK_STEP
@@ -135,7 +137,33 @@ fn collect_actions(i: &egui::InputState) -> Actions {
         }
     }
 
+    // Зажатая стрелка мотает, пока её держат. Повторы считаются только
+    // для перемотки: зажатая T насыпала бы закладок, а зажатая C — стопку
+    // одинаковых копий в буфер.
+    actions.seek += held_seek(i, step);
+
     actions
+}
+
+/// Сколько намотали повторы зажатой стрелки за этот кадр.
+fn held_seek(i: &egui::InputState, step: f64) -> f64 {
+    i.events
+        .iter()
+        .filter_map(|event| match event {
+            egui::Event::Key {
+                key,
+                physical_key,
+                pressed: true,
+                repeat: true,
+                ..
+            } => match physical_key.unwrap_or(*key) {
+                egui::Key::ArrowRight => Some(step),
+                egui::Key::ArrowLeft => Some(-step),
+                _ => None,
+            },
+            _ => None,
+        })
+        .sum()
 }
 
 /// Клавиши, нажатые в этом кадре, независимо от раскладки.

@@ -4,26 +4,6 @@ use crate::engine::Engine;
 use crate::error::Result;
 
 impl Engine {
-    /// Читает размеры кадра после загрузки файла.
-    ///
-    /// Берём `dw`/`dh`, а не `w`/`h`: они уже учитывают поворот из метаданных.
-    /// Иначе вертикальное видео с телефона откроется лёжа (PLAN.md §6.12).
-    pub fn refresh_video_size(&mut self) {
-        let width = self.property_i64("video-params/dw");
-        let height = self.property_i64("video-params/dh");
-
-        match (width, height) {
-            (Some(w), Some(h)) if w > 0 && h > 0 => {
-                self.set_display_size(w, h);
-                tracing::debug!(w, h, "размеры кадра получены");
-            }
-            _ => {
-                // Штатная ситуация: аудиофайл либо кадр ещё не готов.
-                tracing::debug!("размеры кадра недоступны — окно не трогаем");
-            }
-        }
-    }
-
     /// Форма кадра по данным демуксера — до того, как заведён декодер.
     ///
     /// `video-params/dw` появляется только когда mpv настроил вывод, а это

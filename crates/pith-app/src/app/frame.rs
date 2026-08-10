@@ -13,7 +13,9 @@ impl eframe::App for PithApp {
         }
 
         self.accept_files_from_other_instances(ctx);
-        self.process_engine_events();
+        crate::slow::probe("разбор событий mpv", || {
+            self.process_engine_events()
+        });
     }
 
     /// Фон окна — непрозрачный чёрный.
@@ -31,7 +33,7 @@ impl eframe::App for PithApp {
         self.shutdown_engine();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let probe = crate::slow::FrameProbe::start();
         self.frame_time = ui.ctx().input(|i| i.time);
 
@@ -57,6 +59,7 @@ impl eframe::App for PithApp {
         self.poll_preview(ui.ctx());
         self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
+        self.announce_maximized(frame);
         self.track_window_geometry(ui.ctx());
         self.track_manual_resize(ui.ctx());
         self.fit_window_to_video(ui.ctx());
@@ -70,8 +73,11 @@ impl eframe::App for PithApp {
             return;
         }
 
-        let frame_painted = self.paint_video(ui);
-        self.paint_overlays(ui.ctx());
+        let frame_painted =
+            crate::slow::probe("отрисовка видео", || self.paint_video(ui));
+        crate::slow::probe("отрисовка интерфейса", || {
+            self.paint_overlays(ui.ctx())
+        });
         self.record_frame(ui.ctx(), frame_painted);
 
         self.refresh_window_title(ui.ctx());
