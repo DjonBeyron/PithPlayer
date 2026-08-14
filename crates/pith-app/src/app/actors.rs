@@ -319,7 +319,9 @@ impl PithApp {
 /// причину по коду ему незачем.
 fn fetch(tmdb: &Tmdb, query: &pith_tmdb::Query, file_name: &str) -> Result<VideoCast, String> {
     let title = tmdb.find(query).map_err(|e| e.to_string())?;
-    let members = tmdb.cast(&title).map_err(|e| e.to_string())?;
+    let mut members = tmdb.cast(&title).map_err(|e| e.to_string())?;
+
+    add_russian_names(&mut members);
 
     Ok(VideoCast {
         video_file_name: file_name.to_string(),
@@ -335,4 +337,50 @@ fn fetch(tmdb: &Tmdb, query: &pith_tmdb::Query, file_name: &str) -> Result<Video
             })
             .collect(),
     })
+}
+
+/// Добирает русские имена тем, кому база их не дала.
+///
+/// База переводит имена только тех, о ком по-русски писали: на «Меню» это
+/// 17 человек из 34. Недостающих спрашиваем у Wikidata — одним запросом
+/// на всех, по номерам TMDB, около секунды.
+///
+/// Не ответила или не знает — беды нет: имя останется латиницей, и его
+/// можно поправить руками в окне актёров. Замер: на «Меню» Wikidata дала
+/// три имени из семнадцати, на свежей картине — ни одного.
+fn add_russian_names(members: &mut [pith_tmdb::Actor]) {
+    let ids: Vec<i64> = members
+        .iter()
+        .filter(|actor| !pith_tmdb::cyrillic(&actor.name))
+        .map(|actor| actor.id)
+        .collect();
+
+    if ids.is_empty() {
+        return;
+    }
+
+    let found = match pith_tmdb::russian_names(&ids) {
+        Ok(found) => found,
+        Err(e) => {
+            tracing::debug!(error = %e, "Wikidata о русских именах не ответила");
+            return;
+        }
+    };
+
+    if found.is_empty() {
+        tracing::debug!(спрошено = ids.len(), "русских имён у Wikidata не нашлось");
+        return;
+    }
+
+    for actor in members.iter_mut() {
+        if let Some(russian) = found.get(&actor.id) {
+            actor.name = russian.clone();
+        }
+    }
+
+    tracing::info!(
+        добрано = found.len(),
+        спрошено = ids.len(),
+        "русские имена из Wikidata"
+    );
 }

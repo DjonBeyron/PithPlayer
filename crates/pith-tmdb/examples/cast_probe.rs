@@ -49,7 +49,7 @@ fn probe(key: &str, file_name: &str) -> Result<(), String> {
         println!("  {:<44} {photo}", actor.label());
     }
 
-    russian_names(&tmdb, &cast);
+    russian_names(&cast);
 
     Ok(())
 }
@@ -59,14 +59,13 @@ fn probe(key: &str, file_name: &str) -> Result<(), String> {
 /// Русское имя лежит не в составе, а в карточке человека — по запросу
 /// на каждого. Замер отвечает на два вопроса разом: многим ли именам
 /// вообще есть русский вид и сколько стоит спросить обо всех.
-fn russian_names(tmdb: &Tmdb, cast: &[pith_tmdb::Actor]) {
+fn russian_names(cast: &[pith_tmdb::Actor]) {
     // Имена в составе уже приходят по-русски: запрос идёт с `language=ru-RU`,
-    // и база отдаёт переведённое имя, если оно у неё есть. Считаем, скольким
-    // его недостаёт, и только этих спрашиваем отдельно — вдруг русский вид
-    // лежит в списке прочих имён.
+    // и база отдаёт переведённое имя, если оно у неё есть. Недостающие
+    // спрашиваем у Wikidata — одним запросом на всех, по номерам TMDB.
     let latin: Vec<&pith_tmdb::Actor> = cast
         .iter()
-        .filter(|actor| !actor.name.chars().any(|c| ('А'..='я').contains(&c)))
+        .filter(|actor| !pith_tmdb::cyrillic(&actor.name))
         .collect();
 
     println!(
@@ -79,22 +78,27 @@ fn russian_names(tmdb: &Tmdb, cast: &[pith_tmdb::Actor]) {
         return;
     }
 
+    let ids: Vec<i64> = latin.iter().map(|actor| actor.id).collect();
     let started = std::time::Instant::now();
-    let mut found = 0;
+
+    let found = match pith_tmdb::russian_names(&ids) {
+        Ok(found) => found,
+        Err(e) => {
+            println!("Wikidata не ответила: {e}");
+            return;
+        }
+    };
 
     for actor in &latin {
-        match tmdb.russian_name(actor.id) {
-            Ok(Some(russian)) => {
-                found += 1;
-                println!("  {:<34} → {russian}", actor.name);
-            }
-            Ok(None) => println!("  {:<34} → русского имени нет и в карточке", actor.name),
-            Err(e) => println!("  {:<34} → не спросить: {e}", actor.name),
+        match found.get(&actor.id) {
+            Some(russian) => println!("  {:<34} → {russian}", actor.name),
+            None => println!("  {:<34} → русского имени нет нигде", actor.name),
         }
     }
 
     println!(
-        "из карточек добрали: {found} из {} · {:.1} с",
+        "Wikidata добрала: {} из {} · {:.1} с одним запросом",
+        found.len(),
         latin.len(),
         started.elapsed().as_secs_f32(),
     );

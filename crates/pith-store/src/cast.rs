@@ -101,6 +101,45 @@ impl CastStore {
         self.save();
     }
 
+    /// Переименовывает актёра в составе картины.
+    ///
+    /// Нужно там, где базы молчат: русское имя есть не у всех — эпизодникам
+    /// его не досталось ни в TMDB, ни в Wikidata, потому что по-русски о них
+    /// никто не писал. Вписанное руками имя живёт здесь же, рядом с картиной,
+    /// и в Notion уезжает уже оно.
+    ///
+    /// Возвращает `true`, если такой человек нашёлся и имя правда изменилось.
+    pub fn rename_member(&mut self, video_file_name: &str, actor_id: i64, name: &str) -> bool {
+        let name = name.trim();
+
+        if name.is_empty() {
+            return false;
+        }
+
+        let Some(video) = self
+            .data
+            .videos
+            .iter_mut()
+            .find(|v| v.video_file_name == video_file_name)
+        else {
+            return false;
+        };
+
+        let Some(member) = video.members.iter_mut().find(|m| m.id == actor_id) else {
+            return false;
+        };
+
+        if member.name == name {
+            return false;
+        }
+
+        tracing::info!(было = %member.name, стало = %name, "имя актёра исправлено");
+        member.name = name.to_string();
+        self.save();
+
+        true
+    }
+
     /// Убирает состав картины. Нужно, когда состав нашли неверный.
     pub fn forget(&mut self, video_file_name: &str) {
         let before = self.data.videos.len();
@@ -137,6 +176,46 @@ mod tests {
                 photo: Some("/abc.jpg".into()),
             }],
         }
+    }
+
+    #[test]
+    fn имя_актёра_правится_и_переживает_перезапуск() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        let mut store = CastStore::load(paths.clone());
+        store.replace(состав("кино.mkv", "Mark St. Cyr"));
+
+        assert!(store.rename_member("кино.mkv", 6193, "Марк Сент-Сир"));
+
+        let reopened = CastStore::load(paths);
+        let member = &reopened.for_video("кино.mkv").expect("состав").members[0];
+
+        assert_eq!(member.name, "Марк Сент-Сир");
+    }
+
+    #[test]
+    fn пустое_имя_и_чужой_номер_ничего_не_меняют() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let mut store = CastStore::load(DataPaths::with_root(dir.path()));
+        store.replace(состав("кино.mkv", "Mark St. Cyr"));
+
+        assert!(!store.rename_member("кино.mkv", 6193, "   "), "пустое имя");
+        assert!(
+            !store.rename_member("кино.mkv", 999, "Кто-то"),
+            "чужой номер"
+        );
+        assert!(
+            !store.rename_member("другое.mkv", 6193, "Кто-то"),
+            "чужой файл"
+        );
+        assert!(
+            !store.rename_member("кино.mkv", 6193, "Mark St. Cyr"),
+            "то же имя"
+        );
+
+        let member = &store.for_video("кино.mkv").expect("состав").members[0];
+        assert_eq!(member.name, "Mark St. Cyr");
     }
 
     #[test]

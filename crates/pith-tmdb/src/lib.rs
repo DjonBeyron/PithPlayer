@@ -13,9 +13,11 @@ mod error;
 mod model;
 mod net;
 mod normalize;
+mod wikidata;
 
-pub use client::{Tmdb, fetch_photo};
+pub use client::{Tmdb, cyrillic, fetch_photo};
 pub use error::{Result, TmdbError};
 pub use model::{Actor, PhotoSize, Title};
 pub use net::use_proxy;
 pub use normalize::{Query, parse as parse_file_name};
+pub use wikidata::russian_names;

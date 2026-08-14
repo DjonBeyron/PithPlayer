@@ -4,6 +4,7 @@
 //! буфер окна и закрашивает то, что нарисовано до него (PLAN.md §3).
 
 mod actor_photo;
+mod actor_rename;
 mod actors;
 mod bookmark_rename;
 pub(crate) mod bookmarks;

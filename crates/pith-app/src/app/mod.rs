@@ -3,6 +3,7 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod actor_rename;
 mod actors;
 mod audio;
 mod bookmark_rename;
@@ -53,6 +54,7 @@ use pith_store::{DataPaths, Settings, WatchPositions};
 
 use crate::bench::Metrics;
 
+pub use actor_rename::ActorRename;
 pub use actors::{ActorsState, CastStatus, PhotoPreview};
 pub use bookmark_rename::BookmarkRename;
 use clipboard::Notice;
@@ -185,6 +187,9 @@ pub struct PithApp {
 
     /// Окно горячих клавиш и ловля назначаемой клавиши.
     hotkeys_state: HotkeysState,
+
+    /// Кого сейчас переименовывают в окне актёров.
+    actor_rename: Option<ActorRename>,
 
     /// Окно обновления: что вышло и что уже скачано.
     update: UpdateState,

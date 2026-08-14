@@ -84,18 +84,6 @@ impl Tmdb {
             .collect())
     }
 
-    /// Русское имя актёра, если база его знает.
-    ///
-    /// Отдельным запросом и только для выбранного человека: в составе имена
-    /// приходят латиницей, а перевод лежит в списке прочих имён. Тянуть его
-    /// на полсотни человек ради одного выбранного незачем.
-    pub fn russian_name(&self, actor_id: i64) -> Result<Option<String>> {
-        let url = format!("{HOST}/person/{actor_id}?api_key={}", self.key);
-        let person: PersonResponse = self.get(&url)?;
-
-        Ok(person.also_known_as.into_iter().find(|name| cyrillic(name)))
-    }
-
     fn get<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T> {
         let response = crate::net::agent(TIMEOUT)
             .get(url)
@@ -135,8 +123,11 @@ pub fn fetch_photo(url: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Есть ли в строке кириллица.
-fn cyrillic(text: &str) -> bool {
+/// Написано ли имя по-русски.
+///
+/// По этому признаку приложение отбирает тех, кому русского имени
+/// не досталось, и спрашивает о них Wikidata.
+pub fn cyrillic(text: &str) -> bool {
     text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
 }
 
@@ -144,7 +135,7 @@ fn cyrillic(text: &str) -> bool {
 ///
 /// Кодируем всё, кроме букв и цифр: своя реализация избавляет от ещё одной
 /// зависимости ради десятка символов.
-fn encode(text: &str) -> String {
+pub(crate) fn encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
     for byte in text.bytes() {
@@ -239,12 +230,6 @@ impl RawActor {
             photo: self.profile_path,
         }
     }
-}
-
-#[derive(Deserialize)]
-struct PersonResponse {
-    #[serde(default)]
-    also_known_as: Vec<String>,
 }
 
 #[cfg(test)]

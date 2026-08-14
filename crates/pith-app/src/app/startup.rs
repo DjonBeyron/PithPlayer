@@ -96,6 +96,7 @@ impl PithApp {
             photos: photos::PhotoCache::default(),
             integrations: IntegrationsState::default(),
             hotkeys_state: super::HotkeysState::default(),
+            actor_rename: None,
             update: Default::default(),
             update_checked: false,
             export: None,

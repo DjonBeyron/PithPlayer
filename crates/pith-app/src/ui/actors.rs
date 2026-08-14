@@ -8,6 +8,7 @@ use pith_store::{CastMember, VideoCast};
 use crate::app::{CastStatus, PhotoSize, PithApp};
 use crate::theme;
 use crate::tr;
+use crate::ui::actor_rename;
 use crate::ui::{actor_photo, panel_head};
 
 /// Размер окна при первом показе.
@@ -275,7 +276,32 @@ fn show_row(app: &mut PithApp, ui: &mut egui::Ui, member: &CastMember, photo_hei
     );
 
     actor_photo::draw(ui, photo_rect, texture.as_ref());
+
+    // Имя правят прямо в строке: пока правят — поле вместо подписи.
+    if app.renaming_actor(member.id) {
+        actor_rename::show_field(app, ui, rect, photo_rect, member.id);
+        return false;
+    }
+
     show_label(ui, rect, photo_rect, member);
+
+    // Русское имя есть не у всех: эпизодникам его не досталось ни в базе
+    // фильмов, ни в Wikidata. Вписать своё можно здесь.
+    let name = member.name.clone();
+    let id = member.id;
+    let mut rename = false;
+
+    response.context_menu(|ui| {
+        if ui.button(tr!("Исправить имя…", "Fix the name…")).clicked() {
+            rename = true;
+            ui.close();
+        }
+    });
+
+    if rename {
+        app.start_actor_rename(id, &name);
+        return false;
+    }
 
     let Some(path) = photo_path else {
         return assign_response(response).clicked();
