@@ -12,6 +12,7 @@ mod child_window;
 mod clipboard;
 mod crop;
 mod dialogs;
+mod dictionary;
 mod export;
 mod export_log;
 mod export_run;

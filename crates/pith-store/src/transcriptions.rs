@@ -87,6 +87,41 @@ impl SoundStore {
         self.data.words.clone()
     }
 
+    /// Добавляет слова из словаря, вложенного в поставку.
+    ///
+    /// Свои слова главнее: они добыты на этой же машине из тех же словарей,
+    /// и подменять их привезённой копией незачем. Поэтому кладём только то,
+    /// чего у нас нет, — новая установка получает готовый словарь, а
+    /// наработанный за годы остаётся нетронутым.
+    ///
+    /// Возвращает, сколько слов прибавилось. Ноль — файл не переписывается,
+    /// и на втором запуске эта работа обходится без обращения к диску.
+    pub fn seed(&mut self, words: impl IntoIterator<Item = (String, Sound)>) -> usize {
+        let before = self.data.words.len();
+
+        for (key, sound) in words {
+            self.data.words.entry(key).or_insert(sound);
+        }
+
+        let added = self.data.words.len() - before;
+
+        if added == 0 {
+            return 0;
+        }
+
+        tracing::info!(
+            новых = added,
+            всего = self.data.words.len(),
+            "словарь из поставки добавлен"
+        );
+
+        if let Err(e) = write_json(&self.paths.transcriptions(), &self.data) {
+            tracing::error!(error = %e, "не удалось сохранить транскрипции");
+        }
+
+        added
+    }
+
     /// Запоминает найденные слова и записывает файл.
     ///
     /// Пустой список файла не трогает: незачем переписывать его, когда
@@ -159,6 +194,42 @@ mod tests {
 
         assert_eq!(store.get("to").expect("слово").transcription, "|tuː|");
         assert_eq!(store.len(), 1, "слово одно, а не два");
+    }
+
+    #[test]
+    fn словарь_поставки_не_затирает_своё() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let mut store = SoundStore::load(DataPaths::with_root(dir.path()));
+
+        store.remember([("to".to_string(), звук("|tuː|"))]);
+
+        let added = store.seed([
+            ("to".to_string(), звук("|tə|")),
+            ("where".to_string(), звук("|wer|")),
+        ]);
+
+        assert_eq!(added, 1, "прибавилось только незнакомое слово");
+        assert_eq!(
+            store.get("to").expect("слово").transcription,
+            "|tuː|",
+            "своё слово осталось прежним"
+        );
+        assert_eq!(store.get("where").expect("слово").transcription, "|wer|");
+    }
+
+    #[test]
+    fn второй_раз_словарь_поставки_ничего_не_меняет() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+        let mut store = SoundStore::load(paths.clone());
+
+        let words = [("where".to_string(), звук("|wer|"))];
+
+        assert_eq!(store.seed(words.clone()), 1);
+        assert_eq!(store.seed(words), 0, "на втором запуске работы нет");
+
+        let reopened = SoundStore::load(paths);
+        assert_eq!(reopened.len(), 1);
     }
 
     #[test]

@@ -22,6 +22,8 @@ eframe.workspace = true
 egui.workspace = true
 glow.workspace = true
 anyhow.workspace = true
+# Разбор словаря транскрипций, вложенного в поставку (app/dictionary.rs).
+serde = { workspace = true, features = ["derive"] }
 # Настройки чужого синхронизатора Notion — из них берутся токен
 # и страница карточек по умолчанию (app/integrations.rs).
 serde_json.workspace = true
