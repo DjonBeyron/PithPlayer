@@ -11,6 +11,7 @@
 use pith_store::{Binding, Command};
 
 use crate::app::PithApp;
+use crate::ui::keys;
 
 /// Шаги перемотки, секунды.
 const SEEK_STEP: f64 = 5.0;
@@ -177,22 +178,27 @@ pub(super) fn command_for(
     key: egui::Key,
     modifiers: &egui::Modifiers,
 ) -> Option<Command> {
-    let name = key.name();
+    // Имён у клавиши два: наше и короткое от egui. Проверяем оба —
+    // в настройках может лежать любое (`ui/keys.rs`).
+    for name in keys::aliases(key) {
+        let exact = Binding {
+            key: name.to_string(),
+            ctrl: modifiers.ctrl,
+            shift: modifiers.shift,
+            alt: modifiers.alt,
+        };
 
-    let exact = Binding {
-        key: name.to_string(),
-        ctrl: modifiers.ctrl,
-        shift: modifiers.shift,
-        alt: modifiers.alt,
-    };
-
-    if let Some(command) = hotkeys.holder(&exact) {
-        return Some(command);
+        if let Some(command) = hotkeys.holder(&exact) {
+            return Some(command);
+        }
     }
 
-    hotkeys
-        .holder(&Binding::key(name))
-        .filter(|command| command.modifier_changes_step())
+    // Точного совпадения нет: у перемотки и громкости модификатор задаёт
+    // шаг, а не другое действие, — им клавиша годится и с ним.
+    keys::aliases(key)
+        .into_iter()
+        .filter_map(|name| hotkeys.holder(&Binding::key(name)))
+        .find(|command| command.modifier_changes_step())
 }
 
 /// Сколько намотали повторы зажатой клавиши перемотки за этот кадр.
@@ -221,6 +227,62 @@ fn held_seek(i: &egui::InputState, hotkeys: &pith_store::Hotkeys, step: f64) -> 
         .sum()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::command_for;
+    use pith_store::{Binding, Command, Hotkeys};
+
+    fn modifiers(binding: &Binding) -> egui::Modifiers {
+        egui::Modifiers {
+            ctrl: binding.ctrl,
+            shift: binding.shift,
+            alt: binding.alt,
+            ..Default::default()
+        }
+    }
+
+    /// Имя клавиши в настройках должно совпадать с тем, каким его зовёт
+    /// egui: схема хранится именами, а нажатие приходит клавишей. Разойдись
+    /// они — привязка молча не срабатывает, и именно так перестала работать
+    /// перемотка стрелками.
+    #[test]
+    fn каждое_умолчание_находит_своё_действие() {
+        let hotkeys = Hotkeys::default();
+
+        for command in Command::ALL {
+            let binding = hotkeys.binding(command);
+            let key = egui::Key::from_name(&binding.key)
+                .unwrap_or_else(|| panic!("egui не знает клавиши {}", binding.key));
+
+            assert_eq!(
+                command_for(&hotkeys, key, &modifiers(&binding)),
+                Some(command),
+                "не сработало: {command:?} на {}",
+                binding.label()
+            );
+        }
+    }
+
+    /// У перемотки и громкости модификатор задаёт шаг, а не другое действие.
+    #[test]
+    fn стрелка_с_модификатором_остаётся_перемоткой() {
+        let hotkeys = Hotkeys::default();
+        let key = egui::Key::from_name("ArrowRight").expect("клавиша известна");
+
+        for mods in [
+            egui::Modifiers::SHIFT,
+            egui::Modifiers::ALT,
+            egui::Modifiers::CTRL,
+        ] {
+            assert_eq!(
+                command_for(&hotkeys, key, &mods),
+                Some(Command::SeekForward),
+                "стрелка с модификатором перестала мотать"
+            );
+        }
+    }
+}
+
 /// Клавиши, нажатые в этом кадре, независимо от раскладки.
 ///
 /// Берётся физическое положение клавиши: на русской раскладке `]` даёт «ъ»,
@@ -245,3 +307,4 @@ fn pressed_keys(i: &egui::InputState) -> Vec<egui::Key> {
         })
         .collect()
 }
+

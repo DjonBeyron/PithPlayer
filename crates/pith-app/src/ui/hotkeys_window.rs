@@ -9,7 +9,7 @@ use pith_store::{Binding, Command};
 use crate::app::PithApp;
 use crate::theme;
 use crate::tr;
-use crate::ui::dialog;
+use crate::ui::{dialog, keys};
 
 /// Размер окна при первом показе.
 const DEFAULT_SIZE: [f32; 2] = [520.0, 620.0];
@@ -117,7 +117,7 @@ fn catch(ctx: &egui::Context, command: Command) -> Option<Action> {
             return Some(Action::Assign(
                 command,
                 Binding {
-                    key: key.name().to_string(),
+                    key: keys::stored_name(key).to_string(),
                     ctrl: modifiers.ctrl,
                     shift: modifiers.shift,
                     alt: modifiers.alt,

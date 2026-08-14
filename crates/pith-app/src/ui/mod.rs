@@ -22,6 +22,7 @@ mod history;
 mod hotkeys;
 mod hotkeys_window;
 pub mod icons;
+mod keys;
 mod integrations;
 mod lists;
 mod menu;
