@@ -1,4 +1,4 @@
-# Pith Player 5.1.41
+# Pith Player 5.1.45
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,63 +8,69 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.41-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.41-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.45-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.45-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
 
-## Bookmarks go to Notion
+## The installer sets up your video files
 
-The marks you set while watching can now leave the player. One button in the
-fragments panel sends the whole list to a Notion database: the subtitle line as
-the card title, the film name, the actor, and a link to the clip.
+- **A checkbox, ticked by default, opens video files with the player** — the
+  same fifteen extensions the player itself knows: mkv, mp4, avi, mov, webm,
+  ts, m2ts, m4v, flv, wmv, mpg, mpeg, vob, ogv, 3gp. Uninstalling removes the
+  entries again.
+- Windows 10 and 11 do not let a program make itself the default handler —
+  that is the user's decision. The player now appears in "Open with" and in the
+  list of default apps; picking it there is one click, once.
+- **Reinstalling on top no longer downloads FFmpeg again** if it is already
+  next to the player. Ninety megabytes saved on every update.
+- Installing over a running player closes it and puts it back.
 
-- **One database for every film.** Rows carry a `FILM NAME` property, so a
-  season of work lives in one table and filters apart by film.
-- **The order you set them in.** Notion has no notion of "the order I added
-  these", so the player writes a numeric `NUM` property and the view sorts by
-  it. New rows continue the numbering already in the table instead of starting
-  over.
-- **Rows are written three at a time**, with a pause and a retry when Notion
-  asks for one, and the whole export runs in the background — the player keeps
-  playing while it works.
-- **Cut and export in one press.** The export window can start the cutting
-  queue as soon as the rows are in.
+## Updates
 
-## Transcription of the English line
+A new **Update** window in the menu asks GitHub what has been released — one
+request, under a second. It shows the version, the size of the installer and
+the release notes, downloads the installer on request, and runs it when you
+press the button. The player never installs anything on its own.
 
-Each exported card can carry a phonetic transcription of its English text.
-Words are looked up on wooordhunt.ru, and anything it does not know is asked of
-the Cambridge dictionary — contractions like `we're` and `haven't` go there
-first, because the Russian dictionary answers them with the wrong word.
+The check also runs quietly once at startup and says what it found with a line
+in the corner rather than a window over the picture. It can be switched off in
+the same window.
 
-Everything found is kept in a local dictionary, so the second export of the
-same film asks the network for almost nothing. The dictionary warms itself up
-in the background; measured against 4K playback, the frame time does not move.
+## Keyboard shortcuts, in one place
 
-## Actors
+Until now the keys were fixed in the code, and the only way to see them was the
+`--help` text.
 
-A window of the film's cast, with photographs from TMDB. Pick an actor and the
-bookmarks you make are attributed to them, and the attribution travels to
-Notion with the row. Photographs keep their proportions, and a click enlarges
-one.
+- **Menu → Keyboard shortcuts** lists all fifteen actions with their keys.
+- **Click a key and the next press replaces it.** Escape cancels, and Escape
+  itself cannot be assigned — it is what closes windows.
+- **A key already in use is taken off its old action**, and the window says
+  which one it was.
+- One button restores the original scheme.
+- Modifiers still change the *step* of seeking and volume rather than the
+  action: Shift for a minute, Alt for a second.
+- Keys are read by physical position, so a shortcut on `]` keeps working on a
+  Russian keyboard layout.
 
-## The export window
+## Without a network connection
 
-- **Your answers are remembered** — series or film, and every toggle.
-- **A journal that says where each value came from.** Colour-coded by source,
-  line by line, with a button that copies the whole thing.
+The player itself is unaffected: playback, subtitles, cutting and bookmarks
+never touch the network. Cast lists, actor photographs and known transcriptions
+are read from disk.
 
-## The fragments panel
+**The export now fails in a second instead of minutes.** It used to ask the
+dictionaries about every unknown word before contacting Notion, and each
+unanswered word costs about four seconds — a hundred words meant minutes of
+waiting to be told there was no connection, when no row could have been created
+anyway. Notion is now asked first.
 
-- **Drag its edge to any width**, up to nearly the whole window; the width is
-  remembered between runs. The line you drag is one pixel wide and shows itself
-  only while you drag it.
-- **A close tab lives on the panel's edge.** Widened to most of the screen, the
-  panel had almost no "outside" left to click.
-- **Detach it into a window of its own** with the button next to the pin — for
-  a second monitor. It remembers its size and position, and its close button
-  docks it back into the player.
+## Where your data lives
+
+Nothing in this release moves it, and it is worth saying plainly: bookmarks,
+settings, watch positions, the cast cache and the dictionary of transcriptions
+live in `%APPDATA%\PithPlayer`. Installing, reinstalling and uninstalling leave
+them alone — the installer carries the player, not your data.
