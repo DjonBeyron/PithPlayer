@@ -188,6 +188,13 @@ pub struct Settings {
     /// Вырезать отрезки сразу после выгрузки.
     pub export_cut_after: bool,
 
+    /// Спрашивать GitHub о новом выпуске при запуске.
+    ///
+    /// Включено: обновление приходит с исправлениями, и знать о нём лучше
+    /// сразу. Один запрос за запуск, в отдельном потоке; выключается
+    /// в окне обновления.
+    pub update_check: bool,
+
     /// Доступ к Notion: токен интеграции и страницы.
     ///
     /// Пусто — выгрузка не подключена, и кнопка отрезков открывает окно
@@ -224,6 +231,7 @@ impl Default for Settings {
             export_series: true,
             export_transcribe: true,
             export_cut_after: false,
+            update_check: true,
             notion: NotionSettings::default(),
         }
     }

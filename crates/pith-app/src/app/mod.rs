@@ -38,6 +38,7 @@ mod startup;
 mod subtitle_style;
 mod subtitles;
 mod transcription;
+mod update;
 mod viewport;
 mod warmup;
 mod watching;
@@ -61,6 +62,7 @@ pub use integrations::{AccessStatus, IntegrationsState};
 pub use lists::ListDialog;
 pub use photos::PhotoSize;
 pub use subtitles::SubtitleText;
+pub use update::{UpdateStage, UpdateState};
 pub use watching::ResumeOffer;
 
 pub struct PithApp {
@@ -177,6 +179,11 @@ pub struct PithApp {
     photos: photos::PhotoCache,
     /// Окно интеграций: доступ к Notion и ключ базы фильмов.
     integrations: IntegrationsState,
+
+    /// Окно обновления: что вышло и что уже скачано.
+    update: UpdateState,
+    /// Спрашивали ли GitHub в этот запуск — тихая проверка идёт один раз.
+    update_checked: bool,
     /// Открытое окно выгрузки отрезков в Notion.
     export: Option<ExportDialog>,
     /// Панель отрезков показана наведением на правый край.

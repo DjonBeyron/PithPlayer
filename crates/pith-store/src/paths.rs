@@ -81,6 +81,15 @@ impl DataPaths {
         self.root.join("logs")
     }
 
+    /// Скачанные установщики новых выпусков.
+    ///
+    /// Рядом с прочими данными, а не во временной папке системы: файл
+    /// весит под сорок мегабайт, и второй раз качать его незачем, если
+    /// установку отложили до вечера.
+    pub fn updates(&self) -> PathBuf {
+        self.root.join("updates")
+    }
+
     /// История открытых файлов и папок.
     pub fn history(&self) -> PathBuf {
         self.root.join("history.json")

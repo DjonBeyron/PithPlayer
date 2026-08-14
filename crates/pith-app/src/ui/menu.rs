@@ -173,6 +173,18 @@ fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
         ui.close();
     }
 
+    if ui
+        .button(tr!("Обновление…", "Update…"))
+        .on_hover_text(tr!(
+            "Проверить, вышла ли новая версия",
+            "Check whether a new version is out"
+        ))
+        .clicked()
+    {
+        app.open_update(ui.ctx());
+        ui.close();
+    }
+
     let metrics_label = if app.show_metrics() {
         tr!("Скрыть замеры", "Hide metrics")
     } else {

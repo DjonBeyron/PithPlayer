@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "pith-app"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2121,6 +2121,7 @@ dependencies = [
  "pith-store",
  "pith-subs",
  "pith-tmdb",
+ "pith-update",
  "raw-window-handle",
  "rfd",
  "serde_json",
@@ -2133,7 +2134,7 @@ dependencies = [
 
 [[package]]
 name = "pith-dict"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "thiserror 2.0.19",
  "tracing",
@@ -2142,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "pith-fragments"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "tempfile",
  "thiserror 2.0.19",
@@ -2151,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "pith-mpv"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "libmpv2",
  "serde",
@@ -2162,7 +2163,7 @@ dependencies = [
 
 [[package]]
 name = "pith-notion"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "serde",
  "serde_json",
@@ -2173,7 +2174,7 @@ dependencies = [
 
 [[package]]
 name = "pith-store"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "serde",
  "serde_json",
@@ -2184,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "pith-subs"
-version = "5.1.42"
+version = "5.1.43"
 dependencies = [
  "thiserror 2.0.19",
  "tracing",
@@ -2192,7 +2193,18 @@ dependencies = [
 
 [[package]]
 name = "pith-tmdb"
-version = "5.1.42"
+version = "5.1.43"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
+name = "pith-update"
+version = "5.1.43"
 dependencies = [
  "serde",
  "serde_json",

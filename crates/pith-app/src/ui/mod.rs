@@ -41,6 +41,7 @@ mod subtitle_style;
 pub mod subtitles;
 mod time_label;
 mod timeline;
+mod update;
 mod volume;
 
 pub use actors::show as show_actors_window;
@@ -67,6 +68,7 @@ pub use seek_hud::show as show_seek_hud;
 pub use subtitle_style::show as show_subtitle_style;
 pub use subtitles::show as show_subtitles;
 pub use timeline::FragmentRange;
+pub use update::show as show_update;
 
 use crate::theme;
 

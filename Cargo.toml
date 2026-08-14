@@ -8,11 +8,12 @@ members = [
     "crates/pith-tmdb",
     "crates/pith-notion",
     "crates/pith-dict",
+    "crates/pith-update",
     "crates/pith-app",
 ]
 
 [workspace.package]
-version = "5.1.42"
+version = "5.1.43"
 edition = "2024"
 license = "Proprietary"
 authors = ["Pith"]
@@ -32,14 +33,14 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Релизная сборка: оптимизация по скорости, один модуль трансляции.
+# Р РµР»РёР·РЅР°СЏ СЃР±РѕСЂРєР°: РѕРїС‚РёРјРёР·Р°С†РёСЏ РїРѕ СЃРєРѕСЂРѕСЃС‚Рё, РѕРґРёРЅ РјРѕРґСѓР»СЊ С‚СЂР°РЅСЃР»СЏС†РёРё.
 [profile.release]
 opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = true
 
-# Отладочная сборка: зависимости оптимизируем, свой код — нет.
-# Без этого воспроизведение 4К в debug непригодно для проверки.
+# РћС‚Р»Р°РґРѕС‡РЅР°СЏ СЃР±РѕСЂРєР°: Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕРїС‚РёРјРёР·РёСЂСѓРµРј, СЃРІРѕР№ РєРѕРґ вЂ” РЅРµС‚.
+# Р‘РµР· СЌС‚РѕРіРѕ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ 4Рљ РІ debug РЅРµРїСЂРёРіРѕРґРЅРѕ РґР»СЏ РїСЂРѕРІРµСЂРєРё.
 [profile.dev.package."*"]
 opt-level = 2

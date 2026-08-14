@@ -57,6 +57,9 @@ impl eframe::App for PithApp {
         ui::handle_hotkeys(self, ui.ctx());
 
         self.poll_preview(ui.ctx());
+        // Обновление: тихий вопрос при запуске и ответы, пришедшие из сети.
+        self.check_update_quietly(ui.ctx());
+        self.poll_update(ui.ctx());
         self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
         self.announce_maximized(frame);
@@ -174,6 +177,7 @@ impl PithApp {
         // куда угодно, хоть на второй экран.
         ui::show_actors_window(self, ctx);
         ui::show_integrations(self, ctx);
+        ui::show_update(self, ctx);
     }
 
     /// Держит в заголовке окна название текущего видео.
