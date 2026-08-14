@@ -220,6 +220,71 @@ pub fn outline_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     ui.add(button)
 }
 
+/// Переключатель из нескольких кнопок: выбрана ровно одна.
+///
+/// Выбранная залита акцентом, остальные — как поля. Возвращает номер
+/// нажатой, если нажали.
+pub fn segmented(ui: &mut egui::Ui, options: &[(&str, bool)]) -> Option<usize> {
+    let mut chosen = None;
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+
+        for (index, (text, selected)) in options.iter().enumerate() {
+            let (fill, color) = if *selected {
+                (theme::DIALOG_ACCENT_FILL, theme::DIALOG_ON_ACCENT)
+            } else {
+                (theme::DIALOG_FIELD, theme::DIALOG_LABEL)
+            };
+
+            let button = egui::Button::new(egui::RichText::new(*text).color(color))
+                .fill(fill)
+                .corner_radius(FIELD_RADIUS)
+                .min_size(egui::vec2(SEGMENT_WIDTH, BUTTON_HEIGHT - 4.0));
+
+            if ui.add(button).clicked() {
+                chosen = Some(index);
+            }
+        }
+    });
+
+    chosen
+}
+
+/// Наименьшая ширина кнопки переключателя.
+const SEGMENT_WIDTH: f32 = 76.0;
+
+/// Поле ввода во всю ширину карточки.
+pub fn text_field(ui: &mut egui::Ui, value: &mut String, hint_text: &str) {
+    let field = egui::TextEdit::singleline(value)
+        .hint_text(hint_text)
+        .background_color(theme::DIALOG_FIELD)
+        .text_color(theme::DIALOG_TEXT)
+        .margin(egui::Margin::symmetric(10, 8))
+        .desired_width(f32::INFINITY);
+
+    ui.add(field);
+}
+
+/// Готовое значение в рамке поля — показать, но не дать править.
+///
+/// Не выключенное поле ввода: у выключенного текст гаснет и читается как
+/// подсказка, будто значения нет вовсе.
+pub fn value_box(ui: &mut egui::Ui, text: &str) {
+    let width = ui.available_width();
+
+    egui::Frame::NONE
+        .fill(theme::DIALOG_FIELD)
+        .corner_radius(FIELD_RADIUS)
+        .inner_margin(egui::Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(width - 20.0);
+            ui.add(
+                egui::Label::new(egui::RichText::new(text).color(theme::DIALOG_TEXT)).truncate(),
+            );
+        });
+}
+
 /// Обычная кнопка внутри карточки.
 pub fn card_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let button = egui::Button::new(egui::RichText::new(text).color(theme::DIALOG_TEXT))

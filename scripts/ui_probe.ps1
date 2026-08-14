@@ -22,6 +22,10 @@ public class PithProbe {
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
 
+    // Нажатие и отпускание по отдельности — для перетаскивания.
+    public static void Press() { mouse_event(0x0002, 0, 0, 0, 0); }
+    public static void Release() { mouse_event(0x0004, 0, 0, 0, 0); }
+
     public static void Click() {
         mouse_event(0x0002, 0, 0, 0, 0);
         System.Threading.Thread.Sleep(60);
@@ -61,6 +65,32 @@ public class PithProbe {
 
     // Обычное закрытие окна — то же, что щелчок по крестику.
     public static void Close(IntPtr h) { PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero); }
+
+    // ---- дочерние окна: актёры, интеграции, выгрузка ----
+
+    public delegate bool EnumProc(IntPtr h, IntPtr p);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr p);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+
+    public static System.Collections.Generic.List<IntPtr> WindowsOfProcess(int want) {
+        var found = new System.Collections.Generic.List<IntPtr>();
+        EnumWindows((h, p) => {
+            uint pid;
+            GetWindowThreadProcessId(h, out pid);
+            if (pid == (uint)want && IsWindowVisible(h)) found.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static string TitleOf(IntPtr h) {
+        var sb = new System.Text.StringBuilder(400);
+        GetWindowText(h, sb, 400);
+        return sb.ToString();
+    }
 }
 "@
 if (-not ("PithProbe" -as [type])) { Add-Type -TypeDefinition $probeSource }
@@ -91,6 +121,21 @@ function Get-PithRect($proc) {
     $rect = New-Object PithProbe+RECT
     [PithProbe]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null
     return $rect
+}
+
+# Область дочернего окна плеера по его заголовку.
+#
+# Окна актёров, интеграций и выгрузки — отдельные окна системы, и
+# MainWindowHandle указывает не на них. $null, если такого окна нет.
+function Get-PithChildRect($proc, [string]$title) {
+    foreach ($h in [PithProbe]::WindowsOfProcess($proc.Id)) {
+        if ([PithProbe]::TitleOf($h) -eq $title) {
+            $rect = New-Object PithProbe+RECT
+            [PithProbe]::GetWindowRect($h, [ref]$rect) | Out-Null
+            return $rect
+        }
+    }
+    return $null
 }
 
 # Закрывает окно как пользователь и ждёт завершения процесса.
@@ -191,6 +236,8 @@ function Click-PithAt([int]$x, [int]$y) {
 
 $pithKeys = @{
     'space' = 0x20; 'right' = 0x27; 'left' = 0x25; 'escape' = 0x1B; 'f' = 0x46; 'v' = 0x56; 't' = 0x54; 'enter' = 0x0D
+    # 'a' — окно актёров.
+    'a' = 0x41
 }
 
 function Send-PithKey([string]$name, [switch]$Ctrl) {

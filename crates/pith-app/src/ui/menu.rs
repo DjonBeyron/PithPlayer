@@ -161,6 +161,18 @@ fn show_fragment_items(app: &mut PithApp, ui: &mut egui::Ui) {
 fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
     show_languages(app, ui);
 
+    if ui
+        .button(tr!("Интеграции…", "Integrations…"))
+        .on_hover_text(tr!(
+            "Доступ к Notion и ключ базы фильмов",
+            "Notion access and the movie database key"
+        ))
+        .clicked()
+    {
+        app.open_integrations();
+        ui.close();
+    }
+
     let metrics_label = if app.show_metrics() {
         tr!("Скрыть замеры", "Hide metrics")
     } else {

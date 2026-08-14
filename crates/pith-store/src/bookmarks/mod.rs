@@ -26,6 +26,13 @@ pub struct TimeBookmark {
     pub time_ms: i64,
     /// Название, заданное пользователем.
     pub name: Option<String>,
+    /// Кто в кадре: «Имя (Роль)», выбранное в окне актёров.
+    ///
+    /// В списке отрезков не показывается — виден и правится в диалоге
+    /// переименования. В названии закладки ему не место: оно идёт в имя
+    /// вырезанного файла. Старые закладки поля не имеют, и это не ошибка.
+    #[serde(default)]
+    pub actor: Option<String>,
 }
 
 impl TimeBookmark {
@@ -74,9 +81,31 @@ impl BookmarkList {
             return false;
         }
 
-        self.bookmarks.push(TimeBookmark { time_ms, name });
+        self.bookmarks.push(TimeBookmark {
+            time_ms,
+            name,
+            actor: None,
+        });
         self.bookmarks.sort_by_key(|b| b.time_ms);
         true
+    }
+
+    /// Записывает актёра закладке. Возвращает `false`, если метки нет.
+    pub fn set_actor(&mut self, time_ms: i64, actor: Option<String>) -> bool {
+        let Some(bookmark) = self.bookmarks.iter_mut().find(|b| b.time_ms == time_ms) else {
+            return false;
+        };
+
+        bookmark.actor = actor;
+        true
+    }
+
+    /// Ближайшая по времени закладка. Нужна окну актёров: выбранный актёр
+    /// достаётся отрезку под курсором, а если его там нет — соседнему.
+    pub fn nearest(&self, time_ms: i64) -> Option<&TimeBookmark> {
+        self.bookmarks
+            .iter()
+            .min_by_key(|b| (b.time_ms - time_ms).abs())
     }
 
     /// Есть ли закладка в пределах секунды от указанного времени.
@@ -189,6 +218,7 @@ mod tests {
         list.insert(TimeBookmark {
             time_ms: 20_000,
             name: None,
+            actor: None,
         });
 
         let времена: Vec<_> = list.bookmarks.iter().map(|b| b.time_ms).collect();
@@ -200,13 +230,54 @@ mod tests {
         let named = TimeBookmark {
             time_ms: 372_398,
             name: Some("Реплика".into()),
+            actor: None,
         };
         let plain = TimeBookmark {
             time_ms: 372_398,
             name: None,
+            actor: None,
         };
 
         assert_eq!(named.label(), "Реплика");
         assert_eq!(plain.label(), "00:06:12");
+    }
+
+    #[test]
+    fn актёр_записывается_и_заменяется() {
+        let mut list = BookmarkList::new("Основной", 18, 5);
+        list.add(10_000, None);
+
+        assert!(list.set_actor(10_000, Some("Леонардо ДиКаприо (Jack)".into())));
+        assert_eq!(
+            list.bookmarks[0].actor.as_deref(),
+            Some("Леонардо ДиКаприо (Jack)")
+        );
+
+        // Новый выбор заменяет прежнего: актёр у закладки один.
+        assert!(list.set_actor(10_000, Some("Кейт Уинслет (Rose)".into())));
+        assert_eq!(
+            list.bookmarks[0].actor.as_deref(),
+            Some("Кейт Уинслет (Rose)")
+        );
+
+        // Метки нет — и это не ошибка, просто ничего не записали.
+        assert!(!list.set_actor(999, Some("Кто-то".into())));
+    }
+
+    #[test]
+    fn ближайшая_закладка_находится_по_времени() {
+        let mut list = BookmarkList::new("Основной", 18, 5);
+        list.add(10_000, None);
+        list.add(60_000, None);
+
+        assert_eq!(list.nearest(12_000).map(|b| b.time_ms), Some(10_000));
+        assert_eq!(list.nearest(50_000).map(|b| b.time_ms), Some(60_000));
+        // Ровно посередине — берётся первая по порядку.
+        assert_eq!(list.nearest(35_000).map(|b| b.time_ms), Some(10_000));
+    }
+
+    #[test]
+    fn пустой_список_ближайшей_не_имеет() {
+        assert!(BookmarkList::new("Основной", 18, 5).nearest(0).is_none());
     }
 }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::file::{read_json, write_json};
 use crate::language::Language;
+use crate::notion::NotionSettings;
 use crate::paths::DataPaths;
 use crate::subtitle_layout::SubtitleLayout;
 use crate::subtitle_priority::SubtitlePriority;
@@ -39,6 +40,12 @@ impl WindowGeometry {
 /// Пределы правдоподобных размеров окна, точки.
 const MIN_SIDE: f32 = 200.0;
 const MAX_SIDE: f32 = 16384.0;
+
+/// Ширина панели отрезков, пока её не растягивали.
+pub const DEFAULT_PANEL_WIDTH: f32 = 320.0;
+
+/// Уже этого панель бесполезна: кнопки нарезки перестают помещаться.
+pub const MIN_PANEL_WIDTH: f32 = 260.0;
 
 /// Настройки нарезки отрезков (PLAN.md §6.4).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -137,6 +144,55 @@ pub struct Settings {
 
     /// Настройки нарезки отрезков.
     pub fragments: FragmentSettings,
+
+    /// Ключ доступа к базе фильмов TMDB.
+    ///
+    /// Пусто — состав актёров не запрашивается, окно просит ключ.
+    /// Бесплатный, выдаётся сразу после регистрации на themoviedb.org.
+    /// В поставку не входит: ключ у каждого свой, и предел запросов тоже.
+    pub tmdb_key: String,
+
+    /// Где стояло окно актёров и открытым ли его закрыли.
+    pub actors_window: Option<WindowGeometry>,
+    pub actors_window_open: bool,
+
+    /// Где стояло окно выгрузки в Notion.
+    ///
+    /// Открытым его не запоминаем: выгрузку затевают заново каждый раз,
+    /// а вот искать окно по экранам всякий раз незачем.
+    pub export_window: Option<WindowGeometry>,
+
+    /// Панель отрезков откреплена в своё окно.
+    ///
+    /// Откреплённая живёт отдельным окном системы: её уносят на второй
+    /// экран и оставляют там рядом с кадром, а не поверх него.
+    pub bookmarks_panel_detached: bool,
+    /// Где стояло открепленное окно панели.
+    pub bookmarks_window: Option<WindowGeometry>,
+
+    /// Ширина панели отрезков в точках.
+    ///
+    /// Панель тянут за левый край: на длинных репликах узкая полоса
+    /// нечитаема, а кому-то она нужна почти во весь экран. Ширина
+    /// запоминается между запусками и приводится к размеру окна при показе.
+    pub bookmarks_panel_width: f32,
+
+    /// Выгружается сериал, а не фильм.
+    ///
+    /// Ответы окна выгрузки помнятся между запусками: человек режет
+    /// один и тот же сериал неделями, и выбирать одно и то же каждый раз —
+    /// работа на пустом месте.
+    pub export_series: bool,
+    /// Заполнять транскрипцию реплик.
+    pub export_transcribe: bool,
+    /// Вырезать отрезки сразу после выгрузки.
+    pub export_cut_after: bool,
+
+    /// Доступ к Notion: токен интеграции и страницы.
+    ///
+    /// Пусто — выгрузка не подключена, и кнопка отрезков открывает окно
+    /// интеграций вместо выгрузки.
+    pub notion: NotionSettings,
 }
 
 impl Default for Settings {
@@ -157,6 +213,18 @@ impl Default for Settings {
             window_maximized: false,
             audio_device: None,
             fragments: FragmentSettings::default(),
+            tmdb_key: String::new(),
+            actors_window: None,
+            actors_window_open: false,
+            export_window: None,
+            bookmarks_panel_detached: false,
+            bookmarks_window: None,
+            bookmarks_panel_width: DEFAULT_PANEL_WIDTH,
+            // Сериал: коротких отрезков из сериалов режется больше.
+            export_series: true,
+            export_transcribe: true,
+            export_cut_after: false,
+            notion: NotionSettings::default(),
         }
     }
 }
@@ -175,6 +243,15 @@ impl Settings {
         settings.main_subtitle = settings.main_subtitle.clamped();
         settings.secondary_subtitle = settings.secondary_subtitle.clamped();
         settings.volume = settings.volume.clamp(0, 150);
+
+        // Верхнего предела здесь нет: он зависит от окна и накладывается
+        // при показе панели. А вот бессмысленно узкую ширину — из правки
+        // руками или из другого экрана — поправим сразу.
+        if !settings.bookmarks_panel_width.is_finite()
+            || settings.bookmarks_panel_width < MIN_PANEL_WIDTH
+        {
+            settings.bookmarks_panel_width = DEFAULT_PANEL_WIDTH;
+        }
 
         settings
     }
@@ -257,6 +334,35 @@ mod tests {
         let settings = Settings::load(&paths);
         assert_eq!(settings.volume, 42);
         assert!(settings.subtitles_visible, "остальное берётся по умолчанию");
+    }
+
+    #[test]
+    fn ширина_панели_переживает_перезапуск() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        Settings {
+            bookmarks_panel_width: 900.0,
+            ..Default::default()
+        }
+        .save(&paths);
+
+        assert_eq!(Settings::load(&paths).bookmarks_panel_width, 900.0);
+    }
+
+    #[test]
+    fn бессмысленная_ширина_панели_поправляется() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        std::fs::create_dir_all(dir.path()).expect("каталог");
+        std::fs::write(paths.settings(), r#"{"bookmarks_panel_width": 12}"#).expect("настройки");
+
+        assert_eq!(
+            Settings::load(&paths).bookmarks_panel_width,
+            super::DEFAULT_PANEL_WIDTH,
+            "уже предела панель бесполезна"
+        );
     }
 
     #[test]

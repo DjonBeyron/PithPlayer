@@ -12,12 +12,18 @@ path = "src/main.rs"
 [dependencies]
 pith-mpv = { path = "../pith-mpv" }
 pith-store = { path = "../pith-store" }
+pith-tmdb = { path = "../pith-tmdb" }
+pith-notion = { path = "../pith-notion" }
+pith-dict = { path = "../pith-dict" }
 pith-subs = { path = "../pith-subs" }
 pith-fragments = { path = "../pith-fragments" }
 eframe.workspace = true
 egui.workspace = true
 glow.workspace = true
 anyhow.workspace = true
+# Настройки чужого синхронизатора Notion — из них берутся токен
+# и страница карточек по умолчанию (app/integrations.rs).
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rfd = "0.15"

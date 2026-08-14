@@ -38,6 +38,20 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                 fields.focus_pending = false;
             }
 
+            // Актёр отдельным полем: в списке отрезков его не видно, а имя
+            // закладки идёт в имя вырезанного файла — мешать их нельзя.
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(tr!("Актёр", "Actor"))
+                    .color(theme::TEXT_SECONDARY)
+                    .small(),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut fields.actor)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(tr!("Имя (роль)", "Name (role)")),
+            );
+
             ui.add_space(6.0);
             ui.label(
                 egui::RichText::new(tr!(

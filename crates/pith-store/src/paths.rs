@@ -54,6 +54,29 @@ impl DataPaths {
         self.root.join("bookmarks.json")
     }
 
+    /// Составы актёров, разобранные по фильмам.
+    ///
+    /// Отдельным файлом от закладок: состав приходит из чужой базы и
+    /// переживает закладки — список актёров нужен и после того, как все
+    /// отрезки вырезаны и удалены.
+    pub fn cast(&self) -> PathBuf {
+        self.root.join("cast.json")
+    }
+
+    /// Кэш фотографий актёров.
+    pub fn photos(&self) -> PathBuf {
+        self.root.join("photos")
+    }
+
+    /// Транскрипции слов, найденные в словарях.
+    ///
+    /// Отдельным файлом от всего: слова не привязаны ни к фильму,
+    /// ни к закладке и переживают их все — реплики из фильма в фильм
+    /// повторяются, а спрашивать словарь дорого.
+    pub fn transcriptions(&self) -> PathBuf {
+        self.root.join("transcriptions.json")
+    }
+
     pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
     }

@@ -1,17 +1,19 @@
 //! Панель закладок и отрезков.
 //!
-//! Порт `BookmarksPanel` из v4 (PLAN.md §6.5).
+//! Порт `BookmarksPanel` из v4 (PLAN.md §6.5). Левый край панели — её
+//! ширина и язычок закрытия — живёт отдельно, в `panel_resize.rs`.
 
 use crate::app::PithApp;
 use crate::theme;
 use crate::tr;
-use crate::ui::{bookmarks_actions, format_time, icons, panel_head};
-
-/// Ширина панели.
-const PANEL_WIDTH: f32 = 320.0;
+use crate::ui::{bookmarks_actions, bookmarks_row, panel_head, panel_resize};
 
 /// Отступ содержимого от краёв панели.
 const PANEL_PADDING: i8 = 12;
+
+/// Размер откреплённого окна при первом показе и его предел.
+const DETACHED_SIZE: [f32; 2] = [420.0, 700.0];
+const DETACHED_MIN_SIZE: [f32; 2] = [300.0, 320.0];
 
 /// Сколько места оставляем снизу под панелью управления.
 ///
@@ -34,9 +36,6 @@ pub(super) const BUTTON_HEIGHT: f32 = 32.0;
 /// Скругление кнопок нарезки.
 pub(super) const BUTTON_RADIUS: u8 = 8;
 
-/// Ширина колонки со временем: столько занимает «0:00:00».
-const TIME_COLUMN: f32 = 52.0;
-
 /// Что пользователь сделал в панели за кадр.
 #[derive(Default)]
 pub(super) struct PanelActions {
@@ -50,6 +49,8 @@ pub(super) struct PanelActions {
     pub(super) clear: bool,
     pub(super) extract_active: bool,
     pub(super) extract_all: bool,
+    /// Выгрузить активный список в Notion.
+    pub(super) export: bool,
     /// Вырезать один отрезок — метка, напротив которой нажали ножницы.
     pub(super) extract_one: Option<i64>,
     /// Название закладки, которое просят положить в буфер обмена.
@@ -57,6 +58,12 @@ pub(super) struct PanelActions {
 }
 
 pub fn show(app: &mut PithApp, ctx: &egui::Context) {
+    // Откреплённая панель живёт своим окном и от наведения не зависит.
+    if app.bookmarks_panel_detached() {
+        show_detached(app, ctx);
+        return;
+    }
+
     if !app.bookmarks_panel_open() {
         return;
     }
@@ -67,7 +74,8 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     // ни заголовок, ни перетаскивание. Положение считаем сами: область
     // с якорем не знает своей ширины на первом кадре и уезжает за край.
     let screen = ctx.input(|i| i.viewport_rect());
-    let position = egui::pos2(screen.max.x - PANEL_WIDTH, screen.min.y);
+    let width = app.bookmarks_panel_width(screen.width());
+    let position = egui::pos2(screen.max.x - width, screen.min.y);
 
     // Первые кадры панель рисуется целиком, но невидимой: egui считает
     // размеры списка и полосы прокрутки, и при длинном списке иначе видно,
@@ -81,9 +89,13 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
         // — а трогают как раз ящик.
         .order(egui::Order::Middle)
         .fixed_pos(position)
+        // Область не двигают: место у неё своё, у правого края. Иначе она
+        // забирает перетаскивание себе — и полоса, за которую тянут ширину,
+        // не получает его вовсе.
+        .movable(false)
         .show(ctx, |ui| {
             ui.set_opacity(opacity);
-            ui.set_width(PANEL_WIDTH);
+            ui.set_width(width);
 
             egui::Frame::NONE
                 // Непрозрачная: выдвижной ящик, а не полупрозрачная
@@ -96,12 +108,23 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                     bottom: CONTROLS_SPACE,
                 })
                 .show(ui, |ui| {
-                    ui.set_width(PANEL_WIDTH);
+                    // Содержимому достаётся ширина без полей рамки: рамка
+                    // прибавляет их снаружи, и панель выходила шире
+                    // заказанного. Тогда её левый край не совпадал с полосой,
+                    // за которую тянут, — та оказывалась на два десятка точек
+                    // правее видимого края.
+                    ui.set_width(width - f32::from(PANEL_PADDING) * 2.0);
                     // Во всю высоту окна: панель — выдвижной ящик, а не
                     // висящая посреди экрана карточка.
                     ui.set_min_height(screen.height() - f32::from(PANEL_PADDING + CONTROLS_SPACE));
                     show_body(app, ui, &mut actions);
                 });
+
+            // Край, за который тянут, — последним: в egui позднейший
+            // виджет забирает нажатие себе, и полоса не отдаст его списку
+            // под ней. И он внутри области — иначе перетаскивание считалось
+            // бы нажатием мимо панели, и она закрывалась бы под рукой.
+            panel_resize::show(app, ui, screen, position.x);
         });
 
     if opacity < 1.0 {
@@ -122,6 +145,58 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     }
 
     apply(app, actions);
+}
+
+/// Панель отдельным окном системы.
+///
+/// Место и размер запоминаются между запусками, как у окон актёров
+/// и выгрузки. Ни язычка, ни края для растягивания здесь нет: размер
+/// окна задают его собственной рамкой, а закрывают крестиком — он же
+/// возвращает панель в окно плеера.
+fn show_detached(app: &mut PithApp, ctx: &egui::Context) {
+    let viewport = app.place_bookmarks_window(
+        egui::ViewportBuilder::default()
+            .with_title(tr!("Отрезки", "Fragments"))
+            .with_min_inner_size(DETACHED_MIN_SIZE),
+        DETACHED_SIZE,
+    );
+
+    let id = egui::ViewportId::from_hash_of("bookmarks");
+    let mut actions = PanelActions::default();
+    let mut attach = false;
+
+    ctx.show_viewport_immediate(id, viewport, |ctx, _class| {
+        app.track_bookmarks_window(ctx);
+
+        // Подложка во всё окно, и явно: буфер этого окна общий с кадром
+        // mpv, и незакрашенные места показывают видео (CLAUDE.md —
+        // `vo=libmpv`, один контекст отрисовки на всё).
+        let window = ctx.input(|i| i.viewport_rect());
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::NONE
+                    .fill(theme::PANEL_CARD)
+                    .inner_margin(egui::Margin::same(PANEL_PADDING)),
+            )
+            .show(ctx, |ui| {
+                ui.painter().rect_filled(window, 0.0, theme::PANEL_CARD);
+
+                show_body(app, ui, &mut actions);
+            });
+
+        // Крестик окна возвращает панель в плеер: отдельного окна больше
+        // нет, а панель никуда не девается.
+        if ctx.input(|i| i.viewport().close_requested()) {
+            attach = true;
+        }
+    });
+
+    apply(app, actions);
+
+    if attach {
+        app.toggle_bookmarks_panel_detached();
+    }
 }
 
 fn show_body(app: &mut PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
@@ -146,20 +221,22 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui, actions: &mut PanelActions) {
     bookmarks_actions::show(app, &mut bottom, actions);
 }
 
-/// Сколько высоты занимают кнопки нарезки.
+/// Сколько высоты занимают кнопки под списком.
 ///
-/// Вторая строка появляется, только когда списков больше одного, —
-/// и место под неё нужно отмерить заранее.
+/// Строк бывает одна или две: нарезка активного списка вместе со значками
+/// выгрузки и очистки, а под ней — нарезка всех списков. Вторая появляется
+/// не всегда, и место нужно отмерить заранее: список забирает всё, что выше.
 fn actions_height(app: &PithApp) -> f32 {
-    let many_lists = app
-        .current_bookmarks()
-        .is_some_and(|video| video.lists.len() > 1);
+    let Some(video) = app.current_bookmarks() else {
+        return BUTTON_HEIGHT + BUTTON_GAP;
+    };
 
-    if many_lists {
-        BUTTON_HEIGHT * 2.0 + BUTTON_GAP * 2.0
-    } else {
-        BUTTON_HEIGHT + BUTTON_GAP
-    }
+    let has_active = video
+        .active()
+        .is_some_and(|list| !list.bookmarks.is_empty());
+    let rows = usize::from(has_active) + usize::from(video.lists.len() > 1);
+
+    rows.max(1) as f32 * (BUTTON_HEIGHT + BUTTON_GAP)
 }
 
 /// Закладки активного списка.
@@ -189,156 +266,13 @@ fn show_list(app: &PithApp, ui: &mut egui::Ui, height: f32, actions: &mut PanelA
         .max_height(height)
         .show(ui, |ui| {
             for bookmark in &list.bookmarks {
-                show_row(ui, bookmark, &others, can_extract, actions);
+                bookmarks_row::show(ui, bookmark, &others, can_extract, actions);
             }
         });
 }
 
-/// Одна строка списка: время, название, кнопки.
-///
-/// Кнопки выкладываются справа налево первыми, поэтому стоят ровным
-/// столбцом независимо от длины реплики. Время — в колонке постоянной
-/// ширины, иначе названия начинались бы вразнобой.
-fn show_row(
-    ui: &mut egui::Ui,
-    bookmark: &pith_store::TimeBookmark,
-    others: &[String],
-    can_extract: bool,
-    actions: &mut PanelActions,
-) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            show_row_buttons(ui, bookmark, can_extract, actions);
-
-            // Остаток строки — под время и название.
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                show_row_text(ui, bookmark, others, actions);
-            });
-        });
-    });
-}
-
-/// Кнопки строки: убрать, переименовать, вырезать, скопировать название.
-fn show_row_buttons(
-    ui: &mut egui::Ui,
-    bookmark: &pith_store::TimeBookmark,
-    can_extract: bool,
-    actions: &mut PanelActions,
-) {
-    if ui
-        .add(egui::Button::new(icons::DELETE.text()).frame(false))
-        .on_hover_text(tr!("Убрать", "Remove"))
-        .clicked()
-    {
-        actions.remove = Some(bookmark.time_ms);
-    }
-
-    if ui
-        .add(egui::Button::new(icons::EDIT.text()).frame(false))
-        .on_hover_text(tr!("Переименовать", "Rename"))
-        .clicked()
-    {
-        actions.rename = Some(bookmark.time_ms);
-    }
-
-    // Вырезать только этот отрезок: резать весь список ради одной
-    // метки — это лишние файлы и минуты ожидания.
-    if ui
-        .add_enabled(
-            can_extract,
-            egui::Button::new(icons::CUT.text().color(theme::PANEL_ACCENT)).frame(false),
-        )
-        .on_hover_text(tr!("Вырезать этот отрезок", "Cut this fragment"))
-        .on_disabled_hover_text(tr!(
-            "Нужен ffmpeg.exe рядом с плеером",
-            "ffmpeg.exe must sit next to the player"
-        ))
-        .clicked()
-    {
-        actions.extract_one = Some(bookmark.time_ms);
-    }
-
-    // Название закладки — обычно реплика субтитров, и её чаще всего
-    // и хотят перенести в заметки. В строке название урезано, так что
-    // переписать его глазами всё равно не выйдет.
-    let name = bookmark.name.clone().unwrap_or_default();
-
-    if ui
-        .add_enabled(
-            !name.trim().is_empty(),
-            egui::Button::new(icons::COPY.text()).frame(false),
-        )
-        .on_hover_text(tr!("Скопировать название", "Copy the name"))
-        .on_disabled_hover_text(tr!("Название пустое", "The name is empty"))
-        .clicked()
-    {
-        actions.copy_name = Some(name);
-    }
-}
-
-/// Время и название закладки: нажатие переводит воспроизведение к метке.
-fn show_row_text(
-    ui: &mut egui::Ui,
-    bookmark: &pith_store::TimeBookmark,
-    others: &[String],
-    actions: &mut PanelActions,
-) {
-    ui.allocate_ui_with_layout(
-        egui::vec2(TIME_COLUMN, ui.available_height()),
-        egui::Layout::left_to_right(egui::Align::Center),
-        |ui| {
-            ui.label(
-                egui::RichText::new(format_time(bookmark.seconds()))
-                    .color(theme::PANEL_MUTED)
-                    .monospace(),
-            );
-        },
-    );
-
-    let title = bookmark.name.clone().unwrap_or_default();
-    let row = ui
-        .add(
-            egui::Label::new(egui::RichText::new(title).color(theme::TEXT_PRIMARY))
-                .truncate()
-                .sense(egui::Sense::click()),
-        )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-    if row.clicked() {
-        actions.jump_to = Some(bookmark.seconds());
-    }
-
-    row.context_menu(|ui| {
-        show_move_menu(ui, bookmark.time_ms, others, actions);
-    });
-}
-
 fn show_empty(ui: &mut egui::Ui) {
     panel_head::show_empty(ui);
-}
-
-/// Меню переноса закладки в другой список.
-fn show_move_menu(ui: &mut egui::Ui, time_ms: i64, others: &[String], actions: &mut PanelActions) {
-    if others.is_empty() {
-        ui.label(
-            egui::RichText::new(tr!("Других списков нет", "No other lists"))
-                .color(theme::TEXT_SECONDARY),
-        );
-        return;
-    }
-
-    ui.label(
-        egui::RichText::new(tr!("Перенести в список", "Move to list")).color(theme::TEXT_SECONDARY),
-    );
-
-    for name in others {
-        if ui.button(crate::i18n::list_name(name)).clicked() {
-            actions.move_to = Some((time_ms, name.clone()));
-            ui.close();
-        }
-    }
 }
 
 /// Кнопки запуска нарезки и ход выполнения.
@@ -363,6 +297,9 @@ fn apply(app: &mut PithApp, actions: PanelActions) {
     }
     if actions.extract_all {
         app.start_extraction_all_lists();
+    }
+    if actions.export {
+        app.open_export();
     }
     if let Some(time_ms) = actions.extract_one {
         app.start_extraction_one(time_ms);

@@ -3,11 +3,19 @@
 //! Всё состояние живёт здесь и нигде больше (PLAN.md §12.4) — в v4 оно было
 //! размазано по семи partial-файлам `MainForm`.
 
+mod actors;
 mod audio;
 mod bookmark_rename;
 mod bookmarks;
+mod bookmarks_panel;
+mod child_window;
 mod clipboard;
 mod crop;
+mod dialogs;
+mod export;
+mod export_log;
+mod export_run;
+mod export_start;
 mod extraction;
 mod extraction_queue;
 mod file_types;
@@ -15,33 +23,43 @@ mod fragment_settings;
 mod frame;
 mod history;
 mod import_v4;
+mod integrations;
 mod language;
 mod lifecycle;
 mod list_dialog;
 mod lists;
+mod photos;
 mod playback;
 mod preview;
 mod preview_source;
 mod search;
 mod seek;
+mod startup;
 mod subtitle_style;
 mod subtitles;
+mod transcription;
 mod viewport;
+mod warmup;
 mod watching;
 mod window_state;
 
 use std::path::PathBuf;
 
-use pith_mpv::{Engine, EngineOptions, HwDec};
+use pith_mpv::{Engine, HwDec};
 use pith_store::{DataPaths, Settings, WatchPositions};
 
 use crate::bench::Metrics;
 
+pub use actors::{ActorsState, CastStatus, PhotoPreview};
 pub use bookmark_rename::BookmarkRename;
 use clipboard::Notice;
+pub use export::{ExportDialog, ExportStage, NameLanguage};
+pub use export_log::{LogKind, LogLine};
 pub use file_types::FileTypesPrompt;
 pub use fragment_settings::FragmentSettingsDialog;
+pub use integrations::{AccessStatus, IntegrationsState};
 pub use lists::ListDialog;
+pub use photos::PhotoSize;
 pub use subtitles::SubtitleText;
 pub use watching::ResumeOffer;
 
@@ -144,10 +162,29 @@ pub struct PithApp {
     subtitle_style_dirty: bool,
     /// Закладки и списки отрезков.
     bookmarks: pith_store::Bookmarks,
+    /// Составы актёров по картинам.
+    cast_store: pith_store::CastStore,
+    /// Разогрев словарной памяти во время просмотра.
+    warmup: warmup::SoundWarmup,
+    /// Транскрипции слов, найденные в словарях.
+    ///
+    /// Общие на все картины и на все запуски: реплики повторяются,
+    /// а спрашивать словарь дорого — секунда на слово.
+    sounds: pith_store::SoundStore,
+    /// Окно актёров.
+    actors: ActorsState,
+    /// Фотографии актёров: кэш текстур и загрузок.
+    photos: photos::PhotoCache,
+    /// Окно интеграций: доступ к Notion и ключ базы фильмов.
+    integrations: IntegrationsState,
+    /// Открытое окно выгрузки отрезков в Notion.
+    export: Option<ExportDialog>,
     /// Панель отрезков показана наведением на правый край.
     bookmarks_panel: bool,
     /// Панель закреплена через меню и не прячется сама.
     bookmarks_panel_pinned: bool,
+    /// Окну откреплённой панели уже назначено место.
+    bookmarks_window_placed: bool,
     /// Сколько кадров панель ещё рисуется невидимой.
     ///
     /// Первый кадр egui считает разметку списка закладок и полосу прокрутки,
@@ -196,182 +233,8 @@ pub struct PithApp {
 }
 
 impl PithApp {
-    /// Создаёт приложение. Ошибка запуска движка не роняет программу —
-    /// окно откроется и покажет причину.
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        args: crate::cli::Args,
-        instance: crate::single_instance::InstanceServer,
-    ) -> Self {
-        let data_paths = DataPaths::discover();
-        let mut settings = Settings::load(&data_paths);
-        let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());
-
-        // Язык поднимаем до первого кадра: иначе интерфейс успел бы
-        // мелькнуть по-русски у того, кто выбрал английский.
-        Self::choose_language(&mut settings, &data_paths, args.language);
-
-        let hwdec = args.hwdec.unwrap_or_default();
-        let options = EngineOptions {
-            hwdec,
-            volume: settings.volume,
-            muted: settings.muted,
-            looping: settings.looping,
-            audio_languages: settings.audio_languages.clone(),
-            subtitle_languages: settings.subtitle_priority.main_tags.clone(),
-            audio_device: settings.audio_device.clone(),
-            // Подробный журнал mpv включается переменной окружения
-            // PITH_MPV_LOG=<путь>: он нужен для разбора того, на что
-            // уходит время открытия файла, и в обычной работе не пишется.
-            log_file: std::env::var("PITH_MPV_LOG").ok(),
-        };
-
-        let mut watch_positions = WatchPositions::load(data_paths.clone());
-        let history = pith_store::History::load(data_paths.clone());
-
-        // Первый запуск: переносим данные версии 4.
-        let migration = import_v4::run_once(
-            &data_paths,
-            &mut watch_positions,
-            &mut settings,
-            &mut bookmarks,
-            args.import_from.as_deref(),
-        );
-
-        let mut app = Self {
-            engine: None,
-            fatal_error: None,
-            metrics: Metrics::default(),
-            hwdec,
-            // Ключ командной строки перекрывает настройку: он нужен
-            // для замеров, где панель мешает снимкам.
-            show_metrics: settings.show_metrics && !args.hide_metrics,
-            window_title: None,
-            window_geometry: settings.window,
-            window_maximized: settings.window_maximized,
-            announce_maximized_pending: settings.window_maximized,
-            playback_started_pending: false,
-            // Окно уже создано с сохранёнными координатами: проверим
-            // в первом же кадре, что оно попало на существующий экран.
-            window_position_pending: settings.window.is_some(),
-            // Размер первого окна выбран до его создания — по форме кадра,
-            // узнанной у демуксера (main::restore_geometry). Менять его
-            // после загрузки файла нельзя: окно уже на экране, и правка
-            // видна скачком. Остаётся только поправить форму, если размеры
-            // узнать не удалось.
-            restored_geometry_pending: true,
-            seek_pending: false,
-            seek_target: None,
-            key_seek_in_flight: false,
-            key_seek_wanted: None,
-            key_seek_rough: false,
-            key_seek_needs_exact: false,
-            scrub_wanted: None,
-            scrub_in_flight: false,
-            scrub_sent: None,
-            paused_by_scrub: false,
-            scrubbing: false,
-            fullscreen: false,
-            last_pointer_activity: 0.0,
-            fit_window_enabled: !args.no_fit_window,
-            window_resized_by_user: false,
-            expected_window_size: None,
-            fit_window_pending: false,
-            watch_positions,
-            current_path: None,
-            resume_offer: None,
-            last_position_save: 0.0,
-            instance,
-            migration,
-            settings,
-            data_paths,
-            subtitle_text: SubtitleText::default(),
-            last_subtitle: None,
-            notice: None,
-            playback_error: None,
-            frame_time: 0.0,
-            tracks: Vec::new(),
-            selected_tracks: subtitles::SelectedTracks::default(),
-            search: search::SearchState::default(),
-            subtitle_style_open: false,
-            subtitle_style_dirty: false,
-            bookmarks,
-            bookmarks_panel: false,
-            bookmarks_panel_pinned: false,
-            bookmarks_panel_warmup: 0,
-            list_dialog: None,
-            bookmark_rename: None,
-            clear_list_pending: false,
-            fragment_settings: None,
-            file_types_prompt: None,
-            file_types_registered: None,
-            extraction: extraction::ExtractionState::default(),
-            crop: crop::CropState::default(),
-            preview: preview::PreviewState::default(),
-            badge_paused: false,
-            badge_started: None,
-            focus_regained_at: None,
-            volume_changed: false,
-            seek_hud_until: None,
-            history,
-            history_open: false,
-            history_opened_at: None,
-            menu_was_open: false,
-        };
-
-        // Проверка наличия FFmpeg запускает внешний процесс. Делаем это
-        // в фоне при старте, чтобы она не досталась кадру интерфейса.
-        pith_fragments::warm_up();
-
-        match Self::start_engine(cc, &options) {
-            Ok(engine) => app.engine = Some(engine),
-            Err(message) => {
-                tracing::error!("{message}");
-                app.fatal_error = Some(message);
-            }
-        }
-
-        if let Some(path) = args.file {
-            app.open_file(&path);
-        }
-
-        app
-    }
-
     pub fn engine(&self) -> Option<&Engine> {
         self.engine.as_ref()
-    }
-
-    /// Открыто ли окно, для которого Escape означает «закрыть».
-    ///
-    /// Пока такое окно на экране, Escape принадлежит ему. Иначе одно
-    /// нажатие делает два дела сразу: закрывает окно и заодно бросает
-    /// плеер в полноэкранный режим.
-    pub fn escape_belongs_to_window(&self) -> bool {
-        self.search.open
-            || self.list_dialog.is_some()
-            || self.bookmark_rename.is_some()
-            || self.clear_list_pending
-            || self.fragment_settings.is_some()
-            || self.file_types_prompt.is_some()
-            || self.subtitle_style_open
-    }
-
-    /// Открыто ли поверх кадра окно, которому принадлежат клавиши.
-    ///
-    /// Такие окна сами разбирают Escape и Enter, и горячие клавиши плеера
-    /// на это время замолкают: иначе Escape закрывал окно и одновременно
-    /// переключал полный экран.
-    pub fn dialog_open(&self) -> bool {
-        self.history_open
-            || self.search.open
-            || self.list_dialog.is_some()
-            || self.bookmark_rename.is_some()
-            || self.clear_list_pending
-            || self.fragment_settings.is_some()
-            || self.file_types_prompt.is_some()
-            || self.migration.is_some()
-            || self.subtitle_style_open
     }
 
     /// Видна ли панель замеров.

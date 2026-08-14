@@ -187,12 +187,22 @@ impl PithApp {
             // Субтитры прошлого файла к новому отношения не имеют.
             self.reset_search();
             self.last_subtitle = None;
+            // Состав — про открытую картину: у нового файла свой.
+            self.load_cast_for_current();
+            // Слова закладок этого фильма спросим за просмотр, по одному:
+            // к выгрузке спрашивать будет нечего.
+            self.warm_current_bookmarks();
             // Незаконченная перемотка прошлого файла к новому не относится.
             self.forget_seek();
             // У нового видео свои поля — прежняя обрезка к нему не подходит.
             self.forget_crop();
         }
 
+        self.poll_cast();
+        self.poll_integrations();
+        self.poll_warmup();
+        self.poll_export_prepare();
+        self.poll_export();
         self.poll_subtitle_extraction();
         self.poll_extraction();
         self.poll_crop();

@@ -177,6 +177,27 @@ pub const NOTE: Icon = Icon {
     fallback: Fallback::Sign("•"),
 };
 
+/// Закрыть — крестик.
+pub const CLOSE: Icon = Icon {
+    glyph: "\u{E8BB}",
+    fallback: Fallback::Sign("x"),
+};
+
+/// Выгрузить в Notion — стрелка вверх из ящика.
+pub const UPLOAD: Icon = Icon {
+    glyph: "\u{E898}",
+    fallback: Fallback::Word("Выгрузить", "Export"),
+};
+
+/// Очистить список — корзина.
+///
+/// Тот же знак, что у удаления одной закладки: действие то же, только
+/// сразу над всем списком. Крестик на его месте читался как «отмена».
+pub const CLEAR: Icon = Icon {
+    glyph: "\u{E74D}",
+    fallback: Fallback::Word("Очистить", "Clear"),
+};
+
 /// Настройки.
 pub const SETTINGS: Icon = Icon {
     glyph: "\u{E713}",

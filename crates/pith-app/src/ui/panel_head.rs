@@ -53,6 +53,7 @@ pub fn show(app: &mut PithApp, ui: &mut egui::Ui) {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             show_pin(app, ui);
+            show_detach(app, ui);
             show_version(ui);
         });
     });
@@ -88,6 +89,49 @@ fn show_version(ui: &mut egui::Ui) {
             .size(12.0),
     )
     .on_hover_text(tr!("Версия плеера", "Player version"));
+}
+
+/// Кнопка рядом с булавкой: открепить панель в своё окно.
+///
+/// Откреплённая панель — окно системы: её уносят на второй экран
+/// и оставляют рядом с кадром, а не поверх него. Место и размер такого
+/// окна помнятся между запусками.
+fn show_detach(app: &mut PithApp, ui: &mut egui::Ui) {
+    let detached = app.bookmarks_panel_detached();
+
+    let (icon, hint) = if detached {
+        (
+            icons::RESTORE,
+            tr!(
+                "Вернуть панель в окно плеера",
+                "Dock the panel back into the player"
+            ),
+        )
+    } else {
+        (
+            icons::FULLSCREEN,
+            tr!(
+                "Открепить панель в отдельное окно",
+                "Detach the panel into its own window"
+            ),
+        )
+    };
+
+    let color = if detached {
+        theme::PANEL_ACCENT
+    } else {
+        theme::PANEL_MUTED
+    };
+
+    let button = egui::Button::new(icon.text().color(color)).frame(false);
+
+    if ui
+        .add_sized(egui::vec2(PIN_BUTTON, PIN_BUTTON), button)
+        .on_hover_text(hint)
+        .clicked()
+    {
+        app.toggle_bookmarks_panel_detached();
+    }
 }
 
 /// Булавка в углу шапки: закрепить панель.

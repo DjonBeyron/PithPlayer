@@ -1,0 +1,15 @@
+[package]
+name = "pith-tmdb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Три вида запросов на фильм — асинхронный стек ради них не нужен.
+# ureq блокирующий, лёгкий и со своим TLS, без системных библиотек.
+ureq = { version = "3", features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

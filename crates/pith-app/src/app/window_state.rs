@@ -15,12 +15,16 @@ impl PithApp {
     /// незачем, а размер к моменту выхода уже устоялся.
     pub(super) fn remember_window_geometry(&mut self) {
         let Some(geometry) = self.window_geometry else {
+            // Место дочерних окон записать всё равно нужно: они могли
+            // переехать, пока главное окно стояло на месте.
+            self.save_settings();
             return;
         };
 
         let maximized = self.window_maximized;
 
         if self.settings.window == Some(geometry) && self.settings.window_maximized == maximized {
+            self.save_settings();
             return;
         }
 

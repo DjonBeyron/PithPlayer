@@ -11,6 +11,8 @@ pub struct BookmarkRename {
     /// Какую закладку правим — время метки.
     pub time_ms: i64,
     pub name: String,
+    /// Кто в кадре. В списке отрезков не показывается — виден только здесь.
+    pub actor: String,
     /// Полю ещё нужно отдать фокус.
     pub focus_pending: bool,
 }
@@ -30,12 +32,18 @@ impl PithApp {
             .current_bookmarks()
             .and_then(|v| v.active())
             .and_then(|list| list.bookmarks.iter().find(|b| b.time_ms == time_ms))
-            .and_then(|b| b.name.clone())
-            .unwrap_or_default();
+            .cloned();
 
         self.bookmark_rename = Some(BookmarkRename {
             time_ms,
-            name: current,
+            name: current
+                .as_ref()
+                .and_then(|b| b.name.clone())
+                .unwrap_or_default(),
+            actor: current
+                .as_ref()
+                .and_then(|b| b.actor.clone())
+                .unwrap_or_default(),
             focus_pending: true,
         });
     }
@@ -44,16 +52,18 @@ impl PithApp {
         self.bookmark_rename = None;
     }
 
-    /// Применяет новое название.
+    /// Применяет новое название и актёра.
     ///
     /// Пустое имя убирает название вовсе — тогда подписью снова служит
-    /// время, как у закладки, поставленной без субтитров.
+    /// время, как у закладки, поставленной без субтитров. Пустой актёр
+    /// точно так же стирает прежнего.
     pub fn apply_bookmark_rename(&mut self) {
         let Some(dialog) = self.bookmark_rename.take() else {
             return;
         };
 
         let name = dialog.name.trim().to_string();
+        let actor = dialog.actor.trim().to_string();
         let Some(video) = self.current_bookmarks_mut() else {
             return;
         };
@@ -71,6 +81,7 @@ impl PithApp {
         };
 
         bookmark.name = if name.is_empty() { None } else { Some(name) };
+        bookmark.actor = if actor.is_empty() { None } else { Some(actor) };
 
         self.bookmarks.save();
         self.show_notice(crate::tr!("Закладка переименована", "Bookmark renamed"));

@@ -96,6 +96,12 @@ impl PithApp {
             crate::slow::probe("сохранение закладок", || {
                 self.bookmarks.save()
             });
+            // Слова реплики спросим прямо сейчас, в фоне: к выгрузке они
+            // уже будут в памяти, и ждать словари не придётся.
+            if let Some(line) = name.as_deref() {
+                self.warm_words(line);
+            }
+
             let label = name.unwrap_or_else(|| crate::tr!("закладка", "bookmark").into());
             self.show_notice(&crate::tr!(
                 format!("Добавлено: {label}"),
@@ -167,7 +173,8 @@ impl PithApp {
     ///
     /// Каждому списку — свой цвет, чтобы было видно принадлежность метки
     /// (PLAN.md §6.5). Неактивные приглушены, активный рисуется последним
-    /// и потому остаётся поверх остальных.
+    /// и потому остаётся поверх остальных. Закладка с актёром выбивается
+    /// из цвета списка зелёным: подписанные метки видно с одного взгляда.
     pub fn fragment_ranges(&self) -> Vec<FragmentRange> {
         let Some(video) = self.current_bookmarks() else {
             return Vec::new();
@@ -180,11 +187,7 @@ impl PithApp {
             if active {
                 continue;
             }
-            push_ranges(
-                &mut ranges,
-                list,
-                theme::list_color(index).gamma_multiply(DIMMED),
-            );
+            push_ranges(&mut ranges, list, theme::list_color(index), DIMMED);
         }
 
         if let Some((index, list)) = video
@@ -193,7 +196,7 @@ impl PithApp {
             .enumerate()
             .find(|(_, l)| l.name == video.active_list)
         {
-            push_ranges(&mut ranges, list, theme::list_color(index));
+            push_ranges(&mut ranges, list, theme::list_color(index), 1.0);
         }
 
         ranges
@@ -240,136 +243,6 @@ impl PithApp {
                     .map(Path::to_path_buf)
             })
     }
-
-    /// Видна ли панель отрезков.
-    pub fn bookmarks_panel_open(&self) -> bool {
-        self.bookmarks_panel || self.bookmarks_panel_pinned
-    }
-
-    pub fn bookmarks_panel_pinned(&self) -> bool {
-        self.bookmarks_panel_pinned
-    }
-
-    /// Закрепляет панель, чтобы она не пряталась при уходе курсора.
-    pub fn toggle_bookmarks_panel(&mut self) {
-        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
-        self.bookmarks_panel = false;
-
-        if self.bookmarks_panel_pinned {
-            self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
-        }
-    }
-
-    /// Закрепляет панель кнопкой в ней самой.
-    ///
-    /// От `toggle_bookmarks_panel` отличается тем, что панель в обоих
-    /// случаях остаётся на экране: нажали булавку — она перестаёт
-    /// закрываться нажатием мимо, нажали ещё раз — снова закрывается,
-    /// но не исчезает из-под пальца в тот же миг.
-    pub fn toggle_panel_pin(&mut self) {
-        self.bookmarks_panel_pinned = !self.bookmarks_panel_pinned;
-        self.bookmarks_panel = !self.bookmarks_panel_pinned;
-    }
-
-    /// Насколько панель видна сейчас.
-    ///
-    /// Ноль на кадрах прогрева: панель рисуется целиком, но не показывается,
-    /// пока egui не посчитает размеры списка и полосы прокрутки.
-    pub fn bookmarks_panel_opacity(&self) -> f32 {
-        if self.bookmarks_panel_warmup > 0 {
-            0.0
-        } else {
-            1.0
-        }
-    }
-
-    /// Отмечает, что кадр прогрева пройден.
-    ///
-    /// Вызывается панелью после отрисовки: считать нужно только те кадры,
-    /// в которых разметка действительно считалась.
-    pub fn finish_panel_warmup_frame(&mut self) {
-        self.bookmarks_panel_warmup = self.bookmarks_panel_warmup.saturating_sub(1);
-    }
-
-    /// Открыт ли диалог, вызванный из панели отрезков.
-    ///
-    /// Все они рисуются поверх неё, и на время их жизни панель остаётся
-    /// на месте, даже если курсор ушёл из окна.
-    fn panel_dialog_open(&self) -> bool {
-        self.list_dialog.is_some() || self.bookmark_rename.is_some() || self.clear_list_pending
-    }
-
-    /// Открывает панель — по нажатию на язычок у правого края.
-    ///
-    /// Раньше она выезжала от одного наведения и тем самым появлялась
-    /// незваной: курсор шёл к кнопкам полного экрана или просто пересекал
-    /// край экрана. Теперь её вызывают нажатием.
-    pub fn open_bookmarks_panel(&mut self) {
-        if self.bookmarks_panel {
-            return;
-        }
-
-        // Панель только что вызвана — дадим ей кадр на разметку.
-        self.bookmarks_panel_warmup = PANEL_WARMUP_FRAMES;
-        self.bookmarks_panel = true;
-        tracing::debug!("панель отрезков открыта");
-    }
-
-    /// Закроется ли панель ближайшим нажатием мимо неё.
-    ///
-    /// По этому признаку кадр пропускает такое нажатие: щелчок, которым
-    /// панель убирают, не должен заодно ставить паузу. Пауза — за
-    /// следующим щелчком.
-    pub fn bookmarks_panel_dismissible(&self) -> bool {
-        self.bookmarks_panel && !self.panel_dialog_open()
-    }
-
-    /// Закрывает панель — по нажатию мимо неё.
-    pub fn close_bookmarks_panel(&mut self) {
-        if !self.bookmarks_panel {
-            return;
-        }
-
-        // Пока открыт вызванный из панели диалог, она остаётся на месте:
-        // нажатие в диалоге — это работа с панелью, а не мимо неё.
-        if self.panel_dialog_open() {
-            return;
-        }
-
-        self.bookmarks_panel = false;
-        tracing::debug!("панель отрезков убрана: нажали мимо неё");
-    }
-
-    /// Следит за фокусом окна.
-    ///
-    /// Отсюда два следствия. Панель отрезков закрывается, когда работают
-    /// уже не с плеером: нажатие в другом окне до него не доходит, и
-    /// «нажали мимо» такого не ловит. И запоминается миг возвращения
-    /// фокуса — нажатием, которым окно подняли, паузу переключать нельзя.
-    pub(super) fn track_window_focus(&mut self, ctx: &egui::Context) {
-        let regained = ctx.input(|i| {
-            i.events
-                .iter()
-                .any(|event| matches!(event, egui::Event::WindowFocused(true)))
-        });
-
-        if regained {
-            self.focus_regained_at = Some(self.frame_time);
-        }
-
-        if !self.bookmarks_panel || ctx.input(|i| i.focused) {
-            return;
-        }
-
-        // Диалоги панели иногда уводят фокус сами (выбор папки системным
-        // окном) — из-за такого ухода панель закрывать нельзя.
-        if self.panel_dialog_open() {
-            return;
-        }
-
-        self.bookmarks_panel = false;
-        tracing::debug!("панель отрезков убрана: плеер потерял фокус");
-    }
 }
 
 /// Готовит реплику к роли названия закладки.
@@ -377,20 +250,29 @@ fn clean_name(line: String) -> Option<String> {
     crate::text::to_single_line(&line)
 }
 
-/// Сколько кадров панель рисуется невидимой перед показом.
-///
-/// Двух достаточно: на первом egui считает размеры списка, на втором —
-/// положение полосы прокрутки, которое от этих размеров зависит.
-const PANEL_WARMUP_FRAMES: u8 = 2;
-
 /// Складывает отрезки списка в общий набор для полосы перемотки.
-fn push_ranges(ranges: &mut Vec<FragmentRange>, list: &BookmarkList, color: egui::Color32) {
+///
+/// `dim` приглушает цвет неактивных списков. Закладке с актёром цвет списка
+/// не достаётся: она рисуется зелёным, но приглушается наравне с соседями —
+/// иначе метка чужого списка лезла бы вперёд активного.
+fn push_ranges(
+    ranges: &mut Vec<FragmentRange>,
+    list: &BookmarkList,
+    color: egui::Color32,
+    dim: f32,
+) {
     ranges.extend(list.bookmarks.iter().map(|b| {
+        let color = if b.actor.is_some() {
+            theme::ACTOR_MARK
+        } else {
+            color
+        };
+
         FragmentRange::from_bookmark(
             b.seconds(),
             f64::from(list.buffer_sec),
             f64::from(list.duration_sec),
-            color,
+            color.gamma_multiply(dim),
         )
     }));
 }

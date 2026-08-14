@@ -5,11 +5,14 @@ members = [
     "crates/pith-store",
     "crates/pith-subs",
     "crates/pith-fragments",
+    "crates/pith-tmdb",
+    "crates/pith-notion",
+    "crates/pith-dict",
     "crates/pith-app",
 ]
 
 [workspace.package]
-version = "5.1.39"
+version = "5.1.40"
 edition = "2024"
 license = "Proprietary"
 authors = ["Pith"]

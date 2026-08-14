@@ -11,6 +11,7 @@ mod cli;
 mod fonts;
 mod i18n;
 mod logging;
+mod net;
 mod screen;
 mod single_instance;
 mod slow;
@@ -49,6 +50,11 @@ fn main() -> eframe::Result<()> {
     };
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "запуск Pith Player");
+
+    // До первого запроса в сеть: у окна, запущенного из проводника, нет
+    // переменных окружения с прокси, а без него TMDB у части провайдеров
+    // недоступна вовсе.
+    net::announce_proxy();
 
     // Форму кадра узнаём до создания окна: иначе оно открывается в размере
     // прошлого сеанса, а через полсекунды прыгает под кадр. Служебный

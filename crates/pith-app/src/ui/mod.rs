@@ -3,17 +3,24 @@
 //! Всё рисуется поверх видео отдельными слоями: mpv кладёт кадр в весь
 //! буфер окна и закрашивает то, что нарисовано до него (PLAN.md §3).
 
+mod actor_photo;
+mod actors;
 mod bookmark_rename;
-mod bookmarks;
+pub(crate) mod bookmarks;
 mod bookmarks_actions;
+mod bookmarks_row;
 mod controls;
 mod dialog;
+mod export;
+mod export_form;
+mod export_report;
 mod extraction;
 mod file_types;
 mod fragment_settings;
 mod history;
 mod hotkeys;
 pub mod icons;
+mod integrations;
 mod lists;
 mod menu;
 mod menu_tracks;
@@ -23,6 +30,7 @@ mod notice;
 mod panel_handle;
 mod panel_head;
 mod panel_output_dir;
+mod panel_resize;
 mod playback_badge;
 mod preview;
 mod resume;
@@ -35,14 +43,17 @@ mod time_label;
 mod timeline;
 mod volume;
 
+pub use actors::show as show_actors_window;
 pub use bookmark_rename::show as show_bookmark_rename;
 pub use bookmarks::show as show_bookmarks_panel;
 pub use controls::show_controls;
+pub use export::show as show_export;
 pub use extraction::show as show_extraction_notice;
 pub use file_types::show as show_file_types_prompt;
 pub use fragment_settings::show as show_fragment_settings;
 pub use history::show as show_history;
 pub use hotkeys::handle_hotkeys;
+pub use integrations::show as show_integrations;
 pub use lists::show_clear_prompt as show_clear_list_prompt;
 pub use lists::show_dialog as show_list_dialog;
 pub use menu::show_items as show_menu_items;

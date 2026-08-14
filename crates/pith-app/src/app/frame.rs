@@ -162,12 +162,18 @@ impl PithApp {
         ui::show_fragment_settings(self, ctx);
         ui::show_file_types_prompt(self, ctx);
         ui::show_extraction_notice(self, ctx);
+        ui::show_export(self, ctx);
         ui::show_search(self, ctx);
         ui::show_subtitle_style(self, ctx);
         ui::show_history(self, ctx);
         ui::show_notice(self, ctx);
         ui::show_migration_report(self, ctx);
         ui::show_resume_offer(self, ctx);
+
+        // Окно актёров — своё окно, а не слой поверх кадра: его двигают
+        // куда угодно, хоть на второй экран.
+        ui::show_actors_window(self, ctx);
+        ui::show_integrations(self, ctx);
     }
 
     /// Держит в заголовке окна название текущего видео.

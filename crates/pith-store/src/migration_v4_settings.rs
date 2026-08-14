@@ -129,6 +129,8 @@ pub fn migrate_bookmarks(
             .map(|b| TimeBookmark {
                 time_ms: b.time_ms,
                 name: b.custom_name.filter(|n| !n.trim().is_empty()),
+                // В версии 4 актёров не было.
+                actor: None,
             })
             .collect();
 
