@@ -1,4 +1,4 @@
-# Pith Player 5.1.39
+# Pith Player 5.1.41
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,82 +8,63 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.39-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.39-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.41-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.41-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
 The portable build needs `ffmpeg.exe` and `ffprobe.exe` next to the player (or
 in `PATH`) for cutting; playback works without them.
 
-## The player no longer freezes while a file opens
+## Bookmarks go to Notion
 
-Opening a 4K HDR film used to stall the window for a moment — long enough to
-see it, not long enough to explain. Every stall had the same cause: the player
-asked mpv for a property and waited for the answer on the interface thread,
-while mpv was busy parsing the container and starting the decoder.
+The marks you set while watching can now leave the player. One button in the
+fragments panel sends the whole list to a Notion database: the subtitle line as
+the card title, the film name, the actor, and a link to the clip.
 
-Measured on a 4K HDR film, frame by frame:
+- **One database for every film.** Rows carry a `FILM NAME` property, so a
+  season of work lives in one table and filters apart by film.
+- **The order you set them in.** Notion has no notion of "the order I added
+  these", so the player writes a numeric `NUM` property and the view sorts by
+  it. New rows continue the numbering already in the table instead of starting
+  over.
+- **Rows are written three at a time**, with a pause and a retry when Notion
+  asks for one, and the whole export runs in the background — the player keeps
+  playing while it works.
+- **Cut and export in one press.** The export window can start the cutting
+  queue as soon as the rows are in.
 
-| What was asked | When | Frozen for |
-|---|---|---|
-| Playback state, six properties per frame | before the file loaded | 488 ms |
-| Playback state | right after it loaded | 200 ms |
-| Decoder mode, for the log | on load | 227 ms |
-| Audio summary, for the log | on load | 227 ms |
-| Track list | on load | 233 ms |
-| Subtitle lines, twice per frame | after load | 197 ms |
-| Frame size | switching files in a running player | 198 ms |
+## Transcription of the English line
 
-Position, volume, subtitle lines and frame size now arrive from mpv as events —
-nothing is polled any more. The track list is read in one property instead of
-seven per track. Everything else waits for the moment mpv says it has started
-playing, when the same questions cost single milliseconds.
+Each exported card can carry a phonetic transcription of its English text.
+Words are looked up on wooordhunt.ru, and anything it does not know is asked of
+the Cambridge dictionary — contractions like `we're` and `haven't` go there
+first, because the Russian dictionary answers them with the wrong word.
 
-No frame of the interface now runs over budget while a file opens, in either
-direction: launching with a file, or dropping a new file into a running player.
+Everything found is kept in a local dictionary, so the second export of the
+same film asks the network for almost nothing. The dictionary warms itself up
+in the background; measured against 4K playback, the frame time does not move.
 
-## Seeking with the arrow keys
+## Actors
 
-- **Hold an arrow and it keeps seeking** until you let go. The step follows the
-  modifier, so you get three speeds.
-- **Shift + arrows now step by a minute, Alt + arrows by a second**, plain
-  arrows by five seconds.
-- **A burst of presses no longer queues up.** Twelve quick presses used to take
-  1.47 s to settle and moved the picture twice; now it is 0.67 s and the picture
-  follows every press. A single press went from 307 ms to about 170 ms.
+A window of the film's cast, with photographs from TMDB. Pick an actor and the
+bookmarks you make are attributed to them, and the attribution travels to
+Notion with the row. Photographs keep their proportions, and a click enlarges
+one.
 
-The old measurement of seek time was lying: it closed on the next interface
-frame instead of waiting for mpv, and reported single milliseconds. It now
-closes when mpv reports it is ready to play from the new spot.
+## The export window
 
-## The window opens the way you left it
+- **Your answers are remembered** — series or film, and every toggle.
+- **A journal that says where each value came from.** Colour-coded by source,
+  line by line, with a button that copies the whole thing.
 
-- **Maximized stays maximized.** Close the player full screen and it opens full
-  screen — instantly, with no animation and no rebuild of the interface. It is
-  created at exactly the rectangle Windows itself would use, down to the pixel.
-- **The title-bar button gives back your window.** Restoring returns the size
-  *and* position you had before maximizing, not something near-fullscreen.
-- **Nothing shifts after the window appears.** Frame-by-frame capture of the
-  first two seconds shows no movement at all — only the video and the clock.
+## The fragments panel
 
-## Fragments panel
-
-- **Copy the name of a bookmark** with the new button next to the scissors. The
-  name is usually a line of dialogue, and it is truncated in the list, so it
-  could not be copied by hand.
-- **Pin the panel.** The pin in the corner keeps the panel open when you click
-  the video; grey means it closes as before.
-
-## Subtitle lines make better bookmark names
-
-- **Dashes no longer come along.** Dialogue lines start with a dash — hyphen,
-  en dash, em dash, whichever the subtitler used — and it ended up in the
-  bookmark name, in the file name of the clip, and in the clipboard.
-  `- Hi. Hi. / - (sloshing)` now becomes `Hi. Hi. (sloshing)`. A dash inside a
-  sentence is punctuation and is left alone.
-- **A bookmark set in a pause takes the line that just ended**, if it faded less
-  than eight seconds ago. After a longer silence the bookmark stays unnamed
-  rather than borrowing an unrelated line.
-- **The notice no longer breaks into a column.** A long name used to arrive one
-  word per line.
+- **Drag its edge to any width**, up to nearly the whole window; the width is
+  remembered between runs. The line you drag is one pixel wide and shows itself
+  only while you drag it.
+- **A close tab lives on the panel's edge.** Widened to most of the screen, the
+  panel had almost no "outside" left to click.
+- **Detach it into a window of its own** with the button next to the pin — for
+  a second monitor. It remembers its size and position, and its close button
+  docks it back into the player.
