@@ -22,6 +22,7 @@ mod file_types;
 mod fragment_settings;
 mod frame;
 mod history;
+mod hotkeys;
 mod import_v4;
 mod integrations;
 mod language;
@@ -58,6 +59,7 @@ pub use export::{ExportDialog, ExportStage, NameLanguage};
 pub use export_log::{LogKind, LogLine};
 pub use file_types::FileTypesPrompt;
 pub use fragment_settings::FragmentSettingsDialog;
+pub use hotkeys::HotkeysState;
 pub use integrations::{AccessStatus, IntegrationsState};
 pub use lists::ListDialog;
 pub use photos::PhotoSize;
@@ -179,6 +181,9 @@ pub struct PithApp {
     photos: photos::PhotoCache,
     /// Окно интеграций: доступ к Notion и ключ базы фильмов.
     integrations: IntegrationsState,
+
+    /// Окно горячих клавиш и ловля назначаемой клавиши.
+    hotkeys_state: HotkeysState,
 
     /// Окно обновления: что вышло и что уже скачано.
     update: UpdateState,

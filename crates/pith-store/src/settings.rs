@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::file::{read_json, write_json};
+use crate::hotkeys::Hotkeys;
 use crate::language::Language;
 use crate::notion::NotionSettings;
 use crate::paths::DataPaths;
@@ -188,6 +189,9 @@ pub struct Settings {
     /// Вырезать отрезки сразу после выгрузки.
     pub export_cut_after: bool,
 
+    /// Схема горячих клавиш: какое действие какой клавишей вызывается.
+    pub hotkeys: Hotkeys,
+
     /// Спрашивать GitHub о новом выпуске при запуске.
     ///
     /// Включено: обновление приходит с исправлениями, и знать о нём лучше
@@ -231,6 +235,7 @@ impl Default for Settings {
             export_series: true,
             export_transcribe: true,
             export_cut_after: false,
+            hotkeys: Hotkeys::default(),
             update_check: true,
             notion: NotionSettings::default(),
         }

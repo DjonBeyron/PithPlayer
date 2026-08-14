@@ -178,6 +178,7 @@ impl PithApp {
         ui::show_actors_window(self, ctx);
         ui::show_integrations(self, ctx);
         ui::show_update(self, ctx);
+        ui::show_hotkeys_window(self, ctx);
     }
 
     /// Держит в заголовке окна название текущего видео.

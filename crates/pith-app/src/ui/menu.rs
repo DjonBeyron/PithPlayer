@@ -174,6 +174,18 @@ fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
     }
 
     if ui
+        .button(tr!("Горячие клавиши…", "Keyboard shortcuts…"))
+        .on_hover_text(tr!(
+            "Посмотреть и переназначить клавиши",
+            "See and reassign the keys"
+        ))
+        .clicked()
+    {
+        app.open_hotkeys();
+        ui.close();
+    }
+
+    if ui
         .button(tr!("Обновление…", "Update…"))
         .on_hover_text(tr!(
             "Проверить, вышла ли новая версия",
