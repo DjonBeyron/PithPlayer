@@ -117,6 +117,36 @@ pub fn current_exe() -> Result<std::path::PathBuf> {
 mod tests {
     use super::*;
 
+    /// Установщик связывает файлы сам, своим разделом реестра: мастер
+    /// работает до первого запуска плеера, и позвать этот код ему некого.
+    /// Значит список расширений записан дважды — и обязан совпадать,
+    /// иначе установленный плеер откроет не то же, что включённый
+    /// выключателем в настройках.
+    #[test]
+    fn установщик_знает_те_же_расширения() {
+        const SCRIPT: &str = include_str!("../../../installer/pith-player.iss");
+
+        for extension in EXTENSIONS {
+            let entry = format!("Software\\Classes\\.{extension}\\OpenWithProgids");
+            assert!(
+                SCRIPT.contains(&entry),
+                "установщик не связывает .{extension}"
+            );
+        }
+
+        // И наоборот: лишнего в установщике тоже быть не должно.
+        assert_eq!(
+            SCRIPT.matches("\\OpenWithProgids").count(),
+            EXTENSIONS.len(),
+            "в установщике расширений больше, чем знает плеер"
+        );
+
+        assert!(
+            SCRIPT.contains(PROG_ID),
+            "установщик пишет другой идентификатор типа файла"
+        );
+    }
+
     #[test]
     fn список_расширений_без_точек_и_повторов() {
         for extension in EXTENSIONS {

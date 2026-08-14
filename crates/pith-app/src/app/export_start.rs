@@ -211,8 +211,30 @@ impl PithApp {
             let steps = sender.clone();
             let wake = ctx.clone();
 
-            // Сначала транскрипция: без неё строке нечего положить в поле,
-            // а переписывать уже созданные строки — лишние запросы.
+            // Первым делом — подготовка, и только потом словари. Оба шага
+            // ходят в сеть, но подготовка стоит одного запроса и без сети
+            // отказывает за секунду. Словари же спрашивают каждое незнакомое
+            // слово, и отказ каждого стоит четырёх секунд: спросив их
+            // раньше, мы заставляли человека ждать минуты, чтобы услышать
+            // «сети нет». Строки при этом всё равно не создались бы.
+            let prepared = match ready {
+                Some(prepared) => Ok(prepared),
+                None => prepare_now(&notion, remembered, &work, &template),
+            };
+
+            let prepared = match prepared {
+                Ok(prepared) => prepared,
+                Err(why) => {
+                    let answer = Err(why);
+                    let _ = sender.send(ExportEvent::Log(summary(&answer)));
+                    let _ = sender.send(ExportEvent::Finished(Box::new(answer)));
+                    ctx.request_repaint();
+                    return;
+                }
+            };
+
+            // Транскрипция до создания строк: без неё строке нечего положить
+            // в поле, а переписывать уже созданные строки — лишние запросы.
             if sounding {
                 let sounds = sender.clone();
                 let ring = ctx.clone();
@@ -239,8 +261,9 @@ impl PithApp {
             )));
 
             let plan = Plan {
-                ready,
-                known: remembered,
+                ready: Some(prepared),
+                // Подготовка уже в руках — спрашивать её второй раз незачем.
+                known: None,
                 work: &work,
                 template: &template,
                 film_name: &film_name,

@@ -23,6 +23,10 @@
 #define AppExe "pith-player.exe"
 #define Publisher "Pith"
 
+; Тот же идентификатор типа файла, что и у выключателя в настройках плеера
+; (`associations.rs`): связал установщик или сам плеер — запись одна и та же.
+#define ProgId "PithPlayer.Video"
+
 ; Сборка FFmpeg, рекомендованная на ffmpeg.org для Windows. Ссылка
 ; постоянная и всегда ведёт на последний выпуск; рядом лежит файл
 ; с контрольной суммой — по нему загруженный архив и проверяется.
@@ -53,6 +57,12 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Без прав администратора ставится в профиль пользователя.
 PrivilegesRequiredOverridesAllowed=dialog
+; Установка поверх работающего плеера: мастер сам предложит его закрыть
+; и откроет заново, вместо отказа «файл занят». Значение и так принято
+; в Inno 6 по умолчанию — пишем явно, потому что на этом держится
+; переустановка поверх прежней версии.
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -69,9 +79,17 @@ ru.FfmpegSubtitle=Что плееру нужно кроме него самог�
 ru.FfmpegDescription=Отрезки режет FFmpeg. Плеер может скачать его сейчас — около 90 МБ, сборка, рекомендованная на ffmpeg.org. Без него плеер работает, недоступна только нарезка.
 ru.FfmpegCheck=Скачать FFmpeg (рекомендуется)
 ru.FfmpegFailed=Не удалось скачать FFmpeg: %1%nПлеер всё равно будет установлен — нарезка станет доступна, когда рядом с ним появятся ffmpeg.exe и ffprobe.exe.
+en.AssociateVideo=Open video files with Pith Player (mkv, mp4, avi, mov and 11 more)
+ru.AssociateVideo=Открывать видеофайлы плеером (mkv, mp4, avi, mov и ещё 11)
+en.VideoType=Pith Player video
+ru.VideoType=Видео Pith Player
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
+; Связывание видеофайлов стоит галочкой сразу: плеер для того и ставят,
+; чтобы открывать им кино. Снявший её получит прежнее поведение системы —
+; плеер просто появится в списке «Открыть с помощью».
+Name: "associate"; Description: "{cm:AssociateVideo}"
 
 [Files]
 Source: "{#Staging}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
@@ -86,6 +104,44 @@ Source: "{tmp}\ffmpeg.zip"; DestDir: "{tmp}\ffmpeg"; \
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+
+[Registry]
+; Какие файлы плеер открывает. Список обязан совпадать со списком
+; в `crates/pith-app/src/associations.rs` — за этим следит тест
+; `установщик_знает_те_же_расширения`.
+;
+; `HKA` — «куда ставим, туда и пишем»: при установке для всех
+; пользователей это HKLM, при установке в свой профиль — HKCU. Записать
+; всегда в HKCU нельзя: мастер поднимается до администратора, и записи
+; достались бы ему, а не тому, кто за компьютером сидит.
+;
+; Пишем в `OpenWithProgids`, а не в обработчик по умолчанию: плеер
+; появляется в «Открыть с помощью» и в списке программ по умолчанию,
+; но молча не отбирает у пользователя то, чем он смотрит кино сейчас.
+; Такова же оговорка Windows 10 и 11: назначить себя главным по типу
+; файла программа не вправе, это делает человек.
+Root: HKA; Subkey: "Software\Classes\{#ProgId}"; ValueType: string; ValueData: "{cm:VideoType}"; Flags: uninsdeletekey; Tasks: associate
+; Путь значка в кавычках: без них запись с пробелами в пути читается
+; по частям, и значок у файлов пропадает.
+Root: HKA; Subkey: "Software\Classes\{#ProgId}\DefaultIcon"; ValueType: string; ValueData: """{app}\{#AppExe}"",0"; Tasks: associate
+; `%1` в кавычках: без них путь с пробелами приходит по частям.
+Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate
+
+Root: HKA; Subkey: "Software\Classes\.mkv\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.mp4\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.avi\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.mov\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.webm\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.ts\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.m2ts\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.m4v\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.flv\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.wmv\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.mpg\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.mpeg\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.vob\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.ogv\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.3gp\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 
 [Run]
 ; Язык мастера передаётся первому запуску: пользователь уже выбрал его
@@ -106,6 +162,15 @@ var
   DownloadPage: TDownloadWizardPage;
   FfmpegReady: Boolean;
 
+{ Лежит ли FFmpeg рядом с плеером уже сейчас.
+  Так выглядит переустановка поверх прежней: оба файла на месте, и качать
+  те же девяносто мегабайт второй раз незачем. }
+function FfmpegInstalled: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\ffmpeg.exe')) and
+            FileExists(ExpandConstant('{app}\ffprobe.exe'));
+end;
+
 { Нужно ли скачивать FFmpeg.
   При тихой установке страницы мастера не показываются, но галочка на ней
   всё равно создана и стоит — тихая установка тоже получает FFmpeg.
@@ -118,6 +183,13 @@ begin
 
   if not Result then
     Exit;
+
+  { Переустановка поверх: FFmpeg уже на месте. Проверка нужна и здесь,
+    а не только на странице мастера, — при тихой установке страниц нет. }
+  if FfmpegInstalled then begin
+    Result := False;
+    Exit;
+  end;
 
   for Index := 1 to ParamCount do
     if CompareText(ParamStr(Index), '/NOFFMPEG') = 0 then begin
@@ -139,6 +211,13 @@ begin
   DownloadPage := CreateDownloadPage(
     SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;
+end;
+
+{ Страницу о FFmpeg не показываем, когда он уже стоит: спрашивать о том,
+  что и так есть, — значит предлагать лишнюю работу. }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (FfmpegPage <> nil) and (PageID = FfmpegPage.ID) and FfmpegInstalled;
 end;
 
 { Контрольная сумма из файла рядом с архивом. }
