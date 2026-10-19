@@ -91,9 +91,10 @@ pub struct Engine {
     /// поэтому контекст отрисовки освободится раньше `mpv`, на который ссылается.
     render_ctx: Option<Arc<RenderContext>>,
     /// В куче: адрес должен быть стабилен, на него ссылается контекст отрисовки.
+    /// `Arc` — чтобы открытие файла могло уйти в фоновый поток.
     ///
     /// Видно всему крейту: разбор событий живёт в соседнем модуле.
-    pub(crate) mpv: Box<Mpv>,
+    pub(crate) mpv: Arc<Mpv>,
     pub(crate) state: PlaybackState,
 }
 
@@ -129,7 +130,7 @@ impl Engine {
 
         Ok(Self {
             render_ctx: None,
-            mpv: Box::new(mpv),
+            mpv: Arc::new(mpv),
             state: PlaybackState::default(),
         })
     }
@@ -164,9 +165,22 @@ impl Engine {
     /// Путь передаётся без кавычек: libmpv экранирует аргументы сам,
     /// а лишние кавычки становятся частью имени файла.
     pub fn load_file(&mut self, path: &str) -> Result<()> {
-        self.mpv
-            .command("loadfile", &[path])
-            .map_err(|e| MpvError::command("loadfile", e))?;
+        // `loadfile` синхронный: ждёт ответа ядра mpv. А ядро при смене файла
+        // освобождает кадры и декодерные текстуры, которым нужен поток
+        // отрисовки — тот самый, что звал бы команду. Из потока интерфейса
+        // получалась взаимная блокировка: окно застывало на последнем кадре
+        // прошлого видео. Поэтому команда уходит в отдельный поток, а
+        // результат приходит событиями (`FileLoaded`, `PlaybackError`).
+        let mpv = Arc::clone(&self.mpv);
+        let target = path.to_string();
+        std::thread::Builder::new()
+            .name("mpv-loadfile".into())
+            .spawn(move || {
+                if let Err(e) = mpv.command("loadfile", &[target.as_str()]) {
+                    tracing::error!(error = %e, path = %target, "loadfile не выполнен");
+                }
+            })
+            .map_err(|e| MpvError::Init(e.to_string()))?;
 
         // Размеры кадра станут известны только после загрузки — сбрасываем,
         // чтобы не подогнать окно под предыдущий файл.

@@ -82,4 +82,44 @@ impl Engine {
         self.property_string("hwdec-current")
             .unwrap_or_else(|_| "неизвестно".into())
     }
+
+    /// Подбирает масштабирование под размер кадра.
+    ///
+    /// Профиль `gpu-hq` сглаживает кадр дорогими фильтрами (spline36,
+    /// коррекция при уменьшении, дизеринг). На 4К это терпимо, а на 8К
+    /// видеокарта не успевает и картинка идёт рывками. Для кадров шире
+    /// `HEAVY_VIDEO_WIDTH` включается простой билинейный режим; для
+    /// остальных возвращаются значения `gpu-hq`.
+    pub fn tune_for_video_width(&mut self, width: i64) {
+        let heavy = width >= HEAVY_VIDEO_WIDTH;
+        let settings: [(&str, &str); 6] = if heavy {
+            [
+                ("scale", "bilinear"),
+                ("dscale", "bilinear"),
+                ("cscale", "bilinear"),
+                ("dither-depth", "no"),
+                ("correct-downscaling", "no"),
+                ("deband", "no"),
+            ]
+        } else {
+            [
+                ("scale", "spline36"),
+                ("dscale", "mitchell"),
+                ("cscale", "spline36"),
+                ("dither-depth", "auto"),
+                ("correct-downscaling", "yes"),
+                ("deband", "yes"),
+            ]
+        };
+
+        for (name, value) in settings {
+            if let Err(e) = self.set_property_string(name, value) {
+                tracing::warn!(error = %e, name, "не удалось настроить масштабирование");
+            }
+        }
+        tracing::info!(width, heavy, "масштабирование подобрано под размер кадра");
+    }
 }
+
+/// Ширина кадра, с которой включается облегчённое масштабирование.
+const HEAVY_VIDEO_WIDTH: i64 = 5000;

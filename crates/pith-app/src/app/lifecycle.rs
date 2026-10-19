@@ -196,6 +196,12 @@ impl PithApp {
             self.forget_seek();
             // У нового видео свои поля — прежняя обрезка к нему не подходит.
             self.forget_crop();
+            // 8К не тянет дорогое масштабирование — подбираем под размер кадра.
+            if let Some(engine) = self.engine.as_mut()
+                && let Some((width, _)) = engine.demux_video_size()
+            {
+                engine.tune_for_video_width(width);
+            }
         }
 
         self.poll_cast();
