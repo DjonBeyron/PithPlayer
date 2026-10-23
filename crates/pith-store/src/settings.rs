@@ -199,6 +199,12 @@ pub struct Settings {
     /// в окне обновления.
     pub update_check: bool,
 
+    /// До какого момента (секунды Unix) не напоминать об обновлении.
+    ///
+    /// Ставится кнопкой «Напомнить через день»; тихая проверка при запуске
+    /// до этого срока молчит. Ноль — напоминание не откладывали.
+    pub update_remind_after: u64,
+
     /// Доступ к Notion: токен интеграции и страницы.
     ///
     /// Пусто — выгрузка не подключена, и кнопка отрезков открывает окно
@@ -237,6 +243,7 @@ impl Default for Settings {
             export_cut_after: false,
             hotkeys: Hotkeys::default(),
             update_check: true,
+            update_remind_after: 0,
             notion: NotionSettings::default(),
         }
     }

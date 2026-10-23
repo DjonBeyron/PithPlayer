@@ -14,6 +14,16 @@ use pith_update::Release;
 
 use super::PithApp;
 
+/// На сколько откладывается напоминание: сутки.
+const REMIND_AFTER_SECS: u64 = 24 * 60 * 60;
+
+/// Сейчас, секунды Unix.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 /// Что происходит с обновлением сейчас.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum UpdateStage {
@@ -107,10 +117,15 @@ impl PithApp {
     ///
     /// Идёт один раз за запуск и только если её не выключили: плеер
     /// не должен ходить в сеть за спиной у того, кто этого не просил.
-    /// Ответ виден строкой в углу, а не окном поверх кадра: человек сел
-    /// смотреть кино, а не ставить обновления.
+    /// Нашлось новое — открывается окно обновления: там можно скачать
+    /// или отложить напоминание на сутки.
     pub(super) fn check_update_quietly(&mut self, ctx: &egui::Context) {
         if !self.settings.update_check || self.update_checked {
+            return;
+        }
+
+        // Отложили напоминание — до срока не беспокоим.
+        if unix_now() < self.settings.update_remind_after {
             return;
         }
 
@@ -137,14 +152,9 @@ impl PithApp {
         match answer {
             Ok(Some(release)) => {
                 // Окно закрыто — значит проверка была тихой, при запуске.
-                // Скажем строкой в углу и не полезем поверх кадра.
-                if !self.update.open {
-                    let notice = crate::tr!(
-                        format!("Вышла версия {} — меню, «Обновление…»", release.version),
-                        format!("Version {} is out — menu, “Update…”", release.version)
-                    );
-                    self.show_notice(&notice);
-                }
+                // Строку в углу легко не заметить, а обновление ждать не
+                // должно: открываем окно, в нём можно скачать или отложить.
+                self.update.open = true;
 
                 self.update.stage = UpdateStage::Available(release);
             }
@@ -246,6 +256,14 @@ impl PithApp {
                 self.update.stage = UpdateStage::Failed(e.to_string());
             }
         }
+    }
+
+    /// Откладывает напоминание об обновлении на сутки и закрывает окно.
+    pub fn remind_update_later(&mut self) {
+        self.settings.update_remind_after = unix_now() + REMIND_AFTER_SECS;
+        self.save_settings();
+        self.update.open = false;
+        tracing::info!("напоминание об обновлении отложено на сутки");
     }
 
     /// Проверять ли обновления при запуске.

@@ -31,6 +31,7 @@ enum Action {
     Download,
     Install,
     ToggleAuto,
+    Remind,
     Close,
 }
 
@@ -73,6 +74,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
         Some(Action::Download) => app.download_update(ctx),
         Some(Action::Install) => app.install_update(ctx),
         Some(Action::ToggleAuto) => app.toggle_update_check(),
+        Some(Action::Remind) => app.remind_update_later(),
         Some(Action::Close) => app.close_update(),
         None => {}
     }
@@ -275,6 +277,11 @@ fn show_buttons(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
             UpdateStage::Available(_) => {
                 if dialog::accent_button(ui, tr!("Скачать", "Download")).clicked() {
                     action = Some(Action::Download);
+                }
+                if dialog::outline_button(ui, tr!("Напомнить через день", "Remind me tomorrow"))
+                    .clicked()
+                {
+                    action = Some(Action::Remind);
                 }
             }
             UpdateStage::Ready(_) => {
