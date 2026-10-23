@@ -79,6 +79,14 @@ ru.FfmpegSubtitle=Что плееру нужно кроме него самог�
 ru.FfmpegDescription=Отрезки режет FFmpeg. Плеер может скачать его сейчас — около 90 МБ, сборка, рекомендованная на ffmpeg.org. Без него плеер работает, недоступна только нарезка.
 ru.FfmpegCheck=Скачать FFmpeg (рекомендуется)
 ru.FfmpegFailed=Не удалось скачать FFmpeg: %1%nПлеер всё равно будет установлен — нарезка станет доступна, когда рядом с ним появятся ffmpeg.exe и ffprobe.exe.
+en.UpgradeTitle=Update of an installed version
+en.UpgradeSubtitle=Pith Player is already on this computer
+en.UpgradeText=Version %1 of Pith Player is installed. It will be replaced with version %2.%n%nYour data stays where it is: bookmarks, settings, watch positions, cast and the dictionary live in %3 and the installer does not touch them. As a precaution, copies of the main files are saved to:%n%4
+en.UpgradeNoData=No user data found yet - nothing to preserve.
+ru.UpgradeTitle=Обновление установленной версии
+ru.UpgradeSubtitle=Pith Player уже стоит на этом компьютере
+ru.UpgradeText=Установлена версия %1 плеера Pith Player. Она будет заменена на версию %2.%n%nВаши данные останутся на месте: закладки, настройки, позиции просмотра, составы актёров и словарь лежат в %3, установщик их не трогает. На всякий случай копии главных файлов сохраняются в:%n%4
+ru.UpgradeNoData=Пользовательских данных пока нет - сохранять нечего.
 en.AssociateVideo=Open video files with Pith Player (mkv, mp4, avi, mov and 11 more)
 ru.AssociateVideo=Открывать видеофайлы плеером (mkv, mp4, avi, mov и ещё 11)
 en.VideoType=Pith Player video
@@ -156,6 +164,79 @@ Type: files; Name: "{app}\ffmpeg.exe"
 Type: files; Name: "{app}\ffprobe.exe"
 
 [Code]
+var
+  PreviousVersion: String;
+  UpgradePage: TOutputMsgWizardPage;
+
+{ Номер установленной версии: мастер Inno записывает его в раздел
+  удаления программ под тем же AppId. Пусто — плеера на компьютере нет. }
+function FindPreviousVersion: String;
+var
+  Key: String;
+begin
+  Result := '';
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E5C1B0A-4F2D-4C58-9E3B-1B7A9D6C3F41}_is1';
+
+  if RegQueryStringValue(HKLM, Key, 'DisplayVersion', Result) then Exit;
+  if RegQueryStringValue(HKCU, Key, 'DisplayVersion', Result) then Exit;
+  Result := '';
+end;
+
+function UserDataDir: String;
+begin
+  Result := ExpandConstant('{userappdata}\PithPlayer');
+end;
+
+function BackupDir: String;
+begin
+  Result := UserDataDir + '\backup\' + PreviousVersion;
+end;
+
+{ Страница о замене старой версии: что будет заменено и что с данными. }
+procedure CreateUpgradePage;
+var
+  Text: String;
+begin
+  PreviousVersion := FindPreviousVersion;
+
+  if PreviousVersion = '' then
+    Exit;
+
+  if DirExists(UserDataDir) then
+    Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'),
+      [PreviousVersion, '{#Version}', UserDataDir, BackupDir])
+  else
+    Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'),
+      [PreviousVersion, '{#Version}', UserDataDir, BackupDir]) +
+      #13#10#13#10 + ExpandConstant('{cm:UpgradeNoData}');
+
+  UpgradePage := CreateOutputMsgPage(wpWelcome,
+    ExpandConstant('{cm:UpgradeTitle}'),
+    ExpandConstant('{cm:UpgradeSubtitle}'), Text);
+end;
+
+{ Копия главных файлов данных (закладки, настройки, история, словарь)
+  до того, как поменяется хоть один файл программы. Копируются только
+  json верхнего уровня: они маленькие и в них всё ценное, а кэш фото
+  и миниатюр восстановим. Неудача копии установку не отменяет. }
+procedure BackupUserData;
+var
+  Code: Integer;
+begin
+  if (PreviousVersion = '') or not DirExists(UserDataDir) then
+    Exit;
+
+  if not ForceDirectories(BackupDir) then begin
+    Log('не удалось создать папку копии: ' + BackupDir);
+    Exit;
+  end;
+
+  if not Exec(ExpandConstant('{cmd}'),
+      '/C copy /Y "' + UserDataDir + '\*.json" "' + BackupDir + '\"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    Log('копия данных не сделана, код ' + IntToStr(Code));
+end;
+
 #ifndef BundledFfmpeg
 var
   FfmpegPage: TInputOptionWizardPage;
@@ -198,7 +279,7 @@ begin
     end;
 end;
 
-procedure InitializeWizard;
+procedure CreateFfmpegPages;
 begin
   FfmpegPage := CreateInputOptionPage(wpSelectTasks,
     ExpandConstant('{cm:FfmpegTitle}'),
@@ -211,13 +292,6 @@ begin
   DownloadPage := CreateDownloadPage(
     SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;
-end;
-
-{ Страницу о FFmpeg не показываем, когда он уже стоит: спрашивать о том,
-  что и так есть, — значит предлагать лишнюю работу. }
-function ShouldSkipPage(PageID: Integer): Boolean;
-begin
-  Result := (FfmpegPage <> nil) and (PageID = FfmpegPage.ID) and FfmpegInstalled;
 end;
 
 { Контрольная сумма из файла рядом с архивом. }
@@ -325,11 +399,12 @@ begin
     Log('не удалось положить ' + Name + ' рядом с плеером');
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+{ Раскладывает загруженный FFmpeg рядом с плеером. }
+procedure PlaceFfmpeg;
 var
   Root: String;
 begin
-  if (CurStep <> ssPostInstall) or not FfmpegReady then
+  if not FfmpegReady then
     Exit;
 
   { Плееру нужны два файла из архива, остальное — документация и ffplay. }
@@ -338,4 +413,38 @@ begin
   InstallTool(Root, 'ffprobe.exe');
   DelTree(Root, True, True, True);
 end;
+
 #endif
+
+function FfmpegPageHidden(PageID: Integer): Boolean;
+begin
+  Result := False;
+#ifndef BundledFfmpeg
+  { Страницу о FFmpeg не показываем, когда он уже стоит: спрашивать о том,
+    что и так есть, — значит предлагать лишнюю работу. }
+  Result := (FfmpegPage <> nil) and (PageID = FfmpegPage.ID) and FfmpegInstalled;
+#endif
+end;
+
+procedure InitializeWizard;
+begin
+  CreateUpgradePage;
+#ifndef BundledFfmpeg
+  CreateFfmpegPages;
+#endif
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := FfmpegPageHidden(PageID);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    BackupUserData;
+#ifndef BundledFfmpeg
+  if CurStep = ssPostInstall then
+    PlaceFfmpeg;
+#endif
+end;
