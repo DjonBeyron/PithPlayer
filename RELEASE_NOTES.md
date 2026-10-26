@@ -22,7 +22,7 @@ in `PATH`) for cutting; playback works without them.
   notes and a **Remind me tomorrow** button. Close it without choosing and it
   asks again next launch.
 - **The installer tells you it is replacing an older version** and saves copies
-  of your data files (`%APPDATA%\\PithPlayer\\backup\\<old version>`) before
+  of your data files (`%APPDATA%\PithPlayer\backup\<old version>`) before
   touching anything. Your bookmarks, settings and dictionary are never part of
   the installation.
 
@@ -44,5 +44,5 @@ reads and writes nothing.
 ## Where your data lives
 
 Bookmarks, settings, watch positions, the cast cache and the dictionary live in
-`%APPDATA%\\PithPlayer`. Installing, reinstalling and uninstalling leave them
+`%APPDATA%\PithPlayer`. Installing, reinstalling and uninstalling leave them
 alone.
