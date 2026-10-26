@@ -5,6 +5,7 @@
 
 mod bookmarks;
 mod cast;
+mod cev;
 mod error;
 mod file;
 mod file_key;
@@ -25,6 +26,7 @@ pub use bookmarks::{
     BookmarkList, Bookmarks, DEFAULT_LIST, ListError, TimeBookmark, VideoBookmarks,
 };
 pub use cast::{CastMember, CastStore, VideoCast};
+pub use cev::CevSettings;
 pub use error::{Result, StoreError};
 pub use file_key::{FileKey, file_key, key_from_parts};
 pub use history::{CAPACITY as HISTORY_CAPACITY, History};

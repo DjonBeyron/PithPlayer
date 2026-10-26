@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::cev::CevSettings;
 use crate::file::{read_json, write_json};
 use crate::hotkeys::Hotkeys;
 use crate::language::Language;
@@ -200,9 +201,6 @@ pub struct Settings {
     pub update_check: bool,
 
     /// До какого момента (секунды Unix) не напоминать об обновлении.
-    ///
-    /// Ставится кнопкой «Напомнить через день»; тихая проверка при запуске
-    /// до этого срока молчит. Ноль — напоминание не откладывали.
     pub update_remind_after: u64,
 
     /// Доступ к Notion: токен интеграции и страницы.
@@ -210,6 +208,9 @@ pub struct Settings {
     /// Пусто — выгрузка не подключена, и кнопка отрезков открывает окно
     /// интеграций вместо выгрузки.
     pub notion: NotionSettings,
+
+    /// Выгрузка в базу CodeEditVideo (GitHub) вместо Notion.
+    pub cev: CevSettings,
 }
 
 impl Default for Settings {
@@ -244,6 +245,7 @@ impl Default for Settings {
             hotkeys: Hotkeys::default(),
             update_check: true,
             update_remind_after: 0,
+            cev: CevSettings::default(),
             notion: NotionSettings::default(),
         }
     }

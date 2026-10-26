@@ -15,6 +15,7 @@ mod crop;
 mod dialogs;
 mod dictionary;
 mod export;
+mod export_cev;
 mod export_log;
 mod export_run;
 mod export_start;

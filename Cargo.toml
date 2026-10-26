@@ -9,11 +9,12 @@ members = [
     "crates/pith-notion",
     "crates/pith-dict",
     "crates/pith-update",
+    "crates/pith-cev",
     "crates/pith-app",
 ]
 
 [workspace.package]
-version = "5.1.52"
+version = "5.1.53"
 edition = "2024"
 license = "Proprietary"
 authors = ["Pith"]

@@ -12,6 +12,10 @@ use crate::tr;
 /// Адрес созданной базы — по нему её открывают в браузере.
 const NOTION_PAGE: &str = "https://www.notion.so/";
 
+/// Файл базы CodeEditVideo на GitHub.
+const CEV_PAGE: &str =
+    "https://github.com/DjonBeyron/codeeditvideo-projects/blob/main/db/records.json";
+
 /// Итог: сколько создано, сколько без актёра, что не принято.
 pub(super) fn show_report(ui: &mut egui::Ui, report: &Report) -> bool {
     ui.label(
@@ -72,11 +76,20 @@ pub(super) fn show_report(ui: &mut egui::Ui, report: &Report) -> bool {
     show_failures(ui, report);
 
     ui.add_space(10.0);
-    let url = format!("{NOTION_PAGE}{}", report.database_id.replace('-', ""));
-    ui.hyperlink_to(
-        egui::RichText::new(tr!("Открыть в Notion", "Open in Notion")).size(12.0),
-        url,
-    );
+    // Пустой номер базы — выгрузка шла в CodeEditVideo, а не в Notion.
+    if report.database_id.is_empty() {
+        ui.hyperlink_to(
+            egui::RichText::new(tr!("Открыть базу на GitHub", "Open the database on GitHub"))
+                .size(12.0),
+            CEV_PAGE,
+        );
+    } else {
+        let url = format!("{NOTION_PAGE}{}", report.database_id.replace('-', ""));
+        ui.hyperlink_to(
+            egui::RichText::new(tr!("Открыть в Notion", "Open in Notion")).size(12.0),
+            url,
+        );
+    }
 
     ui.add_space(12.0);
     ui.button(tr!("Закрыть", "Close")).clicked()

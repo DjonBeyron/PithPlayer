@@ -33,6 +33,7 @@ pub fn announce_proxy() {
     pith_tmdb::use_proxy(proxy.clone());
     pith_notion::use_proxy(proxy.clone());
     pith_dict::use_proxy(proxy.clone());
+    pith_cev::use_proxy(proxy.clone());
     pith_update::use_proxy(proxy);
 }
 

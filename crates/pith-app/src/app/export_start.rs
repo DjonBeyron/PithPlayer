@@ -66,6 +66,11 @@ impl PithApp {
             _ => return,
         }
 
+        // CodeEditVideo заранее спрашивать не о чем: проверка — по кнопке в окне интеграций.
+        if self.settings.cev.enabled {
+            return;
+        }
+
         let Some(notion) = Notion::new(&self.settings.notion.token) else {
             return;
         };
@@ -160,6 +165,11 @@ impl PithApp {
                 "В списке нет отрезков",
                 "The list has no fragments"
             ));
+            return;
+        }
+
+        if self.settings.cev.enabled {
+            self.start_export_cev(ctx, rows);
             return;
         }
 

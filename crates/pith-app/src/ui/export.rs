@@ -40,7 +40,11 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
     let viewport = app.place_export_window(
         egui::ViewportBuilder::default()
-            .with_title(tr!("Выгрузка в Notion", "Export to Notion"))
+            .with_title(if app.settings().cev.enabled {
+                tr!("Выгрузка в CodeEditVideo", "Export to CodeEditVideo")
+            } else {
+                tr!("Выгрузка в Notion", "Export to Notion")
+            })
             .with_min_inner_size(MIN_SIZE),
         DEFAULT_SIZE,
     );

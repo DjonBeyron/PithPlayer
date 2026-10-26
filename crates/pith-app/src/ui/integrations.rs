@@ -84,7 +84,14 @@ fn show_body(state: &mut IntegrationsState, ui: &mut egui::Ui) -> Option<Action>
         .auto_shrink([false, false])
         .max_height((ui.available_height() - BUTTONS_HEIGHT).max(0.0))
         .show(ui, |ui| {
-            action = show_notion(state, ui);
+            super::integrations_cev::show_target(state, ui);
+            ui.add_space(12.0);
+
+            action = if state.cev.enabled {
+                super::integrations_cev::show_cev(state, ui).then_some(Action::Check)
+            } else {
+                show_notion(state, ui)
+            };
 
             ui.add_space(16.0);
             show_tmdb(state, ui);
@@ -246,7 +253,7 @@ fn show_buttons(ui: &mut egui::Ui) -> Option<Action> {
 }
 
 /// Строка о том, что происходит: проверка, отказ, сохранение.
-fn show_status(status: &AccessStatus, ui: &mut egui::Ui) {
+pub(super) fn show_status(status: &AccessStatus, ui: &mut egui::Ui) {
     let (text, color) = match status {
         AccessStatus::Idle => return,
         AccessStatus::Working => (
@@ -261,6 +268,7 @@ fn show_status(status: &AccessStatus, ui: &mut egui::Ui) {
             .to_string(),
             theme::PANEL_ACCENT,
         ),
+        AccessStatus::Verified(info) => (info.clone(), theme::PANEL_ACCENT),
         AccessStatus::Failed(why) => (why.clone(), theme::ERROR),
         AccessStatus::Saved => (
             tr!("Настройки сохранены", "Settings saved").to_string(),
@@ -273,7 +281,7 @@ fn show_status(status: &AccessStatus, ui: &mut egui::Ui) {
 }
 
 /// Подпись раздела.
-fn show_section(ui: &mut egui::Ui, title: &str) {
+pub(super) fn show_section(ui: &mut egui::Ui, title: &str) {
     ui.label(
         egui::RichText::new(title)
             .color(theme::TEXT_PRIMARY)
@@ -284,7 +292,7 @@ fn show_section(ui: &mut egui::Ui, title: &str) {
 }
 
 /// Пояснение мелким шрифтом.
-fn show_hint(ui: &mut egui::Ui, text: &str) {
+pub(super) fn show_hint(ui: &mut egui::Ui, text: &str) {
     ui.add(
         egui::Label::new(
             egui::RichText::new(text)
@@ -299,7 +307,13 @@ fn show_hint(ui: &mut egui::Ui, text: &str) {
 ///
 /// Токен и ключ прячутся точками: окно открывают при посторонних не реже,
 /// чем без них, а вставленное из буфера проверять глазами всё равно нечем.
-fn show_field(ui: &mut egui::Ui, label: &str, hint: &str, value: &mut String, secret: bool) {
+pub(super) fn show_field(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    value: &mut String,
+    secret: bool,
+) {
     ui.label(
         egui::RichText::new(label)
             .color(theme::TEXT_SECONDARY)

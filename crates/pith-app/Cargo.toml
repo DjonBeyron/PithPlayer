@@ -16,6 +16,7 @@ pith-tmdb = { path = "../pith-tmdb" }
 pith-notion = { path = "../pith-notion" }
 pith-dict = { path = "../pith-dict" }
 pith-update = { path = "../pith-update" }
+pith-cev = { path = "../pith-cev" }
 pith-subs = { path = "../pith-subs" }
 pith-fragments = { path = "../pith-fragments" }
 eframe.workspace = true

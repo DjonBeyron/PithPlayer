@@ -1,0 +1,16 @@
+[package]
+name = "pith-cev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Тот же блокирующий клиент, что у прочих сетевых крейтов.
+ureq = { version = "3", features = ["json"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# Файл через GitHub API приходит и уходит в base64. Своя реализация
+# ради одного места не нужна: крейт крошечный и общепринятый.
+base64 = "0.22"

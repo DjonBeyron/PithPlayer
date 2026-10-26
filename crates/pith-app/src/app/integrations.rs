@@ -7,7 +7,7 @@
 use std::sync::mpsc::{Receiver, channel};
 
 use pith_notion::Notion;
-use pith_store::NotionSettings;
+use pith_store::{CevSettings, NotionSettings};
 
 use super::PithApp;
 
@@ -36,6 +36,8 @@ pub enum AccessStatus {
     Working,
     /// Обе страницы видны интеграции.
     Ok,
+    /// Доступ есть; пояснение словами (сколько записей в базе и т. п.).
+    Verified(String),
     /// Причина отказа словами.
     Failed(String),
     /// Настройки записаны.
@@ -47,11 +49,13 @@ pub struct IntegrationsState {
     pub open: bool,
     /// Черновик полей Notion — то, что набрано в окне.
     pub notion: NotionSettings,
+    /// Черновик выгрузки в CodeEditVideo.
+    pub cev: CevSettings,
     /// Черновик ключа базы фильмов.
     pub tmdb_key: String,
     pub status: AccessStatus,
     /// Ответ проверки, которого ждём: сеть идёт в отдельном потоке.
-    pending: Option<Receiver<Result<(), String>>>,
+    pending: Option<Receiver<Result<String, String>>>,
 }
 
 impl Default for IntegrationsState {
@@ -59,6 +63,7 @@ impl Default for IntegrationsState {
         Self {
             open: false,
             notion: NotionSettings::default(),
+            cev: CevSettings::default(),
             tmdb_key: String::new(),
             status: AccessStatus::Idle,
             pending: None,
@@ -79,6 +84,7 @@ impl PithApp {
     /// Открывает окно, наполняя черновик тем, что уже известно.
     pub fn open_integrations(&mut self) {
         self.integrations.notion = self.settings.notion.clone();
+        self.integrations.cev = self.settings.cev.clone();
         self.integrations.tmdb_key = self.settings.tmdb_key.clone();
         self.integrations.status = AccessStatus::Idle;
 
@@ -104,6 +110,10 @@ impl PithApp {
             // само, по ссылкам, — сменили страницу, и запись отпадёт.
             known: self.settings.notion.known.clone(),
         };
+        self.settings.cev = CevSettings {
+            enabled: draft.cev.enabled,
+            token: draft.cev.token.trim().to_string(),
+        };
         self.settings.tmdb_key = draft.tmdb_key.trim().to_string();
 
         self.save_settings();
@@ -123,6 +133,7 @@ impl PithApp {
     /// без этого он лежал бы в канале до ближайшего движения мышью.
     pub fn check_notion_access(&mut self, ctx: &egui::Context) {
         let draft = self.integrations.notion.clone();
+        let cev = self.integrations.cev.clone();
 
         self.integrations.status = AccessStatus::Working;
 
@@ -132,7 +143,12 @@ impl PithApp {
         let ctx = ctx.clone();
 
         std::thread::spawn(move || {
-            let _ = sender.send(check(&draft));
+            let answer = if cev.enabled {
+                check_cev(&cev)
+            } else {
+                check(&draft).map(|()| String::new())
+            };
+            let _ = sender.send(answer);
             ctx.request_repaint();
         });
     }
@@ -149,9 +165,13 @@ impl PithApp {
 
         self.integrations.pending = None;
         self.integrations.status = match answer {
-            Ok(()) => {
+            Ok(info) if info.is_empty() => {
                 tracing::info!("доступ к Notion есть");
                 AccessStatus::Ok
+            }
+            Ok(info) => {
+                tracing::info!(%info, "доступ к CodeEditVideo есть");
+                AccessStatus::Verified(info)
             }
             Err(why) => {
                 tracing::warn!(причина = %why, "доступа к Notion нет");
@@ -195,6 +215,26 @@ fn read_sync_config() -> Option<serde_json::Value> {
     serde_json::from_str(&text)
         .inspect_err(|e| tracing::debug!(error = %e, "настройки синхронизатора не разобрать"))
         .ok()
+}
+
+/// Проверка доступа к базе CodeEditVideo: только чтение, ничего не пишет.
+fn check_cev(settings: &CevSettings) -> Result<String, String> {
+    let cev = pith_cev::Cev::new(&settings.token).ok_or_else(|| {
+        crate::tr!("Не задан токен GitHub", "The GitHub token is missing").to_string()
+    })?;
+
+    let access = cev.check().map_err(|e| e.to_string())?;
+
+    Ok(crate::tr!(
+        format!(
+            "База доступна для записи: записей {}, следующий номер {}",
+            access.records, access.next_number
+        ),
+        format!(
+            "The database is writable: {} records, next number {}",
+            access.records, access.next_number
+        )
+    ))
 }
 
 /// Проверяет доступ. Выполняется в отдельном потоке.

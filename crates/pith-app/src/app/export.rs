@@ -180,11 +180,8 @@ impl PithApp {
             return;
         }
 
-        if !self.settings.notion.is_ready() {
-            self.show_notice(crate::tr!(
-                "Сначала подключите Notion",
-                "Connect Notion first"
-            ));
+        if !self.export_target_ready() {
+            self.show_notice(self.export_target_missing());
             self.open_integrations();
             return;
         }
