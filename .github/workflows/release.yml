@@ -75,9 +75,17 @@ jobs:
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
 
+      - name: Сборка плеера
+        shell: pwsh
+        run: |
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { throw "сборка не удалась" }
+          # Скрипты упаковки берут библиотеку рядом с exe.
+          Copy-Item third_party/mpv/libmpv-2.dll target/release/
+
       - name: Установщик
         shell: pwsh
-        run: powershell -File scripts/build_installer.ps1
+        run: powershell -File scripts/build_installer.ps1 -SkipBuild
 
       - name: Портативный ZIP
         shell: pwsh
