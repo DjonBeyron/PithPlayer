@@ -1,0 +1,94 @@
+# Сборка выпуска: установщик и портативный ZIP, черновик релиза на GitHub.
+#
+# Запуск: тег `v*` (git tag v5.1.53 && git push origin v5.1.53) либо вручную
+# во вкладке Actions. Релиз создаётся ЧЕРНОВИКОМ: плееры по всему миру
+# увидят его только после того, как вы нажмёте «Publish release». Перед
+# этим скачайте установщик из черновика и проверьте.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      # Конфиг репозитория прописывает путь к MinGW на машине автора —
+      # здесь линкер берётся из PATH, а SDK libmpv лежит в third_party.
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: gcc
+      RUSTFLAGS: -L native=third_party/mpv/lib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия из Cargo.toml
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          if (-not $v) { throw "нет версии в Cargo.toml" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Тег совпадает с версией
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_name }}" -ne "v${{ steps.ver.outputs.version }}") {
+            throw "тег ${{ github.ref_name }} не равен версии ${{ steps.ver.outputs.version }}"
+          }
+
+      - name: libmpv SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest --jq '.assets[] | select(.name | test("^mpv-dev-x86_64-[0-9]{8}")) | .browser_download_url' | Select-Object -First 1
+          if (-not $asset) { throw "не нашёл mpv-dev-x86_64 среди файлов выпуска" }
+          Invoke-WebRequest $asset -OutFile mpv-dev.7z
+          7z x mpv-dev.7z -omv_sdk -y | Out-Null
+          New-Item -ItemType Directory -Force third_party/mpv/lib | Out-Null
+          $inc = Get-ChildItem mv_sdk -Recurse -Directory -Filter mpv | Select-Object -First 1
+          Copy-Item $inc.Parent.FullName third_party/mpv/include -Recurse
+          Get-ChildItem mv_sdk -Recurse -Filter libmpv.dll.a | Select-Object -First 1 | Copy-Item -Destination third_party/mpv/lib
+          Get-ChildItem mv_sdk -Recurse -Filter libmpv-2.dll | Select-Object -First 1 | Copy-Item -Destination third_party/mpv
+          Get-ChildItem third_party/mpv -Recurse | Select-Object FullName
+
+      - name: Rust (GNU)
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          rustup default stable-x86_64-pc-windows-gnu
+
+      - name: Проверки
+        shell: pwsh
+        run: |
+          cargo test --workspace --exclude pith-app
+          if ($LASTEXITCODE -ne 0) { throw "тесты не прошли" }
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Установщик
+        shell: pwsh
+        run: powershell -File scripts/build_installer.ps1
+
+      - name: Портативный ZIP
+        shell: pwsh
+        run: powershell -File scripts/package.ps1 -SkipBuild
+
+      - name: Черновик релиза
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $files = Get-ChildItem dist -File | Where-Object { $_.Name -match "^PithPlayer-$v-(setup\.exe|portable\.zip)$" } | ForEach-Object { $_.FullName }
+          if (-not ($files | Where-Object { $_ -like "*-setup.exe" })) { throw "установщик не собрался" }
+          gh release create "v$v" @files --draft --title "Pith Player $v" --notes-file RELEASE_NOTES.md --target "${{ github.sha }}"
