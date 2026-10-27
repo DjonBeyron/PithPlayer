@@ -1,4 +1,4 @@
-# Pith Player 5.1.58
+# Pith Player 5.1.59
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,8 +8,8 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.58-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.58-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.59-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.59-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
@@ -54,6 +54,10 @@ reads and writes nothing.
   was copied through memory — too slow for 8K.
 - **Seeking in 8K is instant**: a click on the timeline first shows the nearest
   keyframe, then refines to the exact spot in the background.
+- **After a video ends, seeking back plays from that spot** (click on the
+  timeline, drag, or arrow keys) instead of staying on pause.
+- **Opening another video no longer waits for the seek preview** to finish its
+  work in the background.
 - **Developer mode**: click the version number three times in the Update
   window to choose a folder for the logs (`pith-player.log`, `mpv.log`).
 

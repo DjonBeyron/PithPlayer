@@ -140,7 +140,17 @@ impl PithApp {
 
     /// Забывает всё о прошлом файле.
     pub(super) fn reset_preview(&mut self) {
-        self.preview = PreviewState::default();
+        // Старое состояние освобождается в отдельном потоке: поток
+        // предпросмотра ждёт своего mpv (кадр 8К — секунды), и в потоке
+        // интерфейса это выглядело как зависание при открытии другого файла.
+        let old = std::mem::take(&mut self.preview);
+
+        if let Err(e) = std::thread::Builder::new()
+            .name("preview-reaper".into())
+            .spawn(move || drop(old))
+        {
+            tracing::warn!(error = %e, "не удалось освободить предпросмотр в фоне");
+        }
     }
 
     /// Готовит источники и забирает готовое. Вызывается каждый кадр.

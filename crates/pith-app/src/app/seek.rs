@@ -14,6 +14,9 @@
 
 use super::PithApp;
 
+/// Перемотка ближе этого к концу не считается «возвратом»: играть там нечего.
+const FINISH_MARGIN: f64 = 0.5;
+
 impl PithApp {
     /// Заказывает перемотку на указанное место.
     pub(super) fn request_seek(&mut self, target: f64) {
@@ -34,6 +37,26 @@ impl PithApp {
 
         self.key_seek_wanted = Some(target);
         self.send_pending_seek();
+        self.resume_if_finished(target);
+    }
+
+    /// Фильм был доигран, а пользователь перемотал назад — играем с этого места.
+    ///
+    /// На последнем кадре mpv стоит на паузе (`keep-open`). Команда идёт
+    /// после перемотки: порядок команд mpv сохраняет.
+    pub(super) fn resume_if_finished(&mut self, target: f64) {
+        let Some(engine) = self.engine.as_mut() else {
+            return;
+        };
+        let state = engine.state();
+
+        if !state.finished || target >= state.duration - FINISH_MARGIN {
+            return;
+        }
+
+        if engine.set_paused(false).is_ok() {
+            engine.clear_finished();
+        }
     }
 
     /// Отправляет накопленный заказ, если движок освободился.
@@ -180,6 +203,11 @@ impl PithApp {
         self.scrub_wanted = None;
         self.scrub_sent = None;
         self.scrubbing = false;
+
+        // Тянули ползунок назад с последнего кадра — играем с того места.
+        if let Some(target) = self.seek_target {
+            self.resume_if_finished(target);
+        }
 
         if !self.paused_by_scrub {
             return;
