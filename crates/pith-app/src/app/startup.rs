@@ -28,6 +28,8 @@ impl PithApp {
 
         let data_paths = DataPaths::discover();
         let mut settings = Settings::load(&data_paths);
+        // Токен GitHub переживает переустановку и старые версии плеера.
+        settings.cev.restore(&data_paths);
         let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());
 
         // Язык поднимаем до первого кадра: иначе интерфейс успел бы

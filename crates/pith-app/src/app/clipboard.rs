@@ -17,6 +17,7 @@ impl PithApp {
     }
 
     pub fn save_settings(&self) {
+        self.settings.cev.persist(&self.data_paths);
         self.settings.save(&self.data_paths);
     }
 

@@ -4,7 +4,7 @@ use pith_notion::Report;
 
 use crate::ui::export_report;
 
-use crate::app::{ExportStage, LogKind, LogLine, PithApp};
+use crate::app::{DupPolicy, ExportStage, LogKind, LogLine, PithApp};
 use crate::theme;
 use crate::tr;
 
@@ -22,6 +22,9 @@ const PADDING: i8 = 14;
 
 /// Что нажали.
 enum Action {
+    StartSkip,
+    StartKeep,
+    Back,
     Start,
     Close,
 }
@@ -89,6 +92,9 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
     match action {
         Some(Action::Start) => app.start_export(ctx),
+        Some(Action::StartSkip) => app.start_export_with(ctx, DupPolicy::Skip),
+        Some(Action::StartKeep) => app.start_export_with(ctx, DupPolicy::Keep),
+        Some(Action::Back) => app.export_back_to_question(),
         Some(Action::Close) => app.close_export(),
         None => {}
     }
@@ -103,6 +109,7 @@ enum View {
     Sound { done: usize, total: usize },
     Work { done: usize, total: usize },
     Done(Box<Report>),
+    Dup { count: usize, samples: Vec<String> },
     Fail(String),
 }
 
@@ -120,6 +127,10 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
             total: *total,
         },
         ExportStage::Done(report) => View::Done(Box::new(report.clone())),
+        ExportStage::Duplicates { count, samples } => View::Dup {
+            count: *count,
+            samples: samples.clone(),
+        },
         ExportStage::Failed(why) => View::Fail(why.clone()),
     };
 
@@ -151,7 +162,23 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
             None
         }
         View::Done(report) => export_report::show_report(ui, &report).then_some(Action::Close),
-        View::Fail(why) => export_report::show_failure(ui, &why).then_some(Action::Close),
+        View::Dup { count, samples } => super::export_dup::show_duplicates(ui, count, &samples)
+            .map(|choice| match choice {
+                super::export_dup::Choice::Skip => Action::StartSkip,
+                super::export_dup::Choice::Keep => Action::StartKeep,
+                super::export_dup::Choice::Back => Action::Back,
+            }),
+        View::Fail(why) => {
+            let closed = export_report::show_failure(ui, &why);
+
+            // Отказ GitHub — самый частый случай: токен пропал, истёк
+            // или без права записи. Подсказываем, где его взять.
+            if app.settings().cev.enabled {
+                super::integrations_cev::show_token_help(ui);
+            }
+
+            closed.then_some(Action::Close)
+        }
     };
 
     show_journal(app, ui, &journal);

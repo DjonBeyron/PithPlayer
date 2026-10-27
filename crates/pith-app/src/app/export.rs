@@ -8,8 +8,8 @@
 use std::sync::mpsc::Receiver;
 
 use pith_notion::{Kind, Prepared, Report};
-use pith_store::Sound as StoredSound;
 
+pub(super) use super::export_event::ExportEvent;
 use super::export_log::{LogKind, LogLine};
 use super::export_run::finish;
 use super::export_start::summary;
@@ -29,6 +29,8 @@ pub enum ExportStage {
     Working { done: usize, total: usize },
     /// Выгрузка кончилась — итог с числами.
     Done(Report),
+    /// В базе уже есть такие отрезки — ждём решения человека.
+    Duplicates { count: usize, samples: Vec<String> },
     /// Не вышло вовсе: до строк дело не дошло.
     Failed(String),
 }
@@ -140,24 +142,6 @@ impl ExportDialog {
             ExportStage::Working { .. } | ExportStage::Sounding { .. }
         )
     }
-}
-
-/// Вести от рабочего потока.
-pub(super) enum ExportEvent {
-    /// Строка журнала: что произошло и откуда взято значение.
-    Log(LogLine),
-    /// Спрошено слов из скольких — идёт транскрипция.
-    Sound {
-        done: usize,
-        total: usize,
-    },
-    /// Новые слова: приложение положит их в хранилище.
-    Words(Vec<(String, StoredSound)>),
-    Step {
-        done: usize,
-        total: usize,
-    },
-    Finished(Box<Result<Report, String>>),
 }
 
 impl PithApp {
@@ -345,6 +329,10 @@ impl PithApp {
                 ExportEvent::Words(words) => fresh = words,
                 ExportEvent::Step { done, total } => {
                     dialog.stage = ExportStage::Working { done, total };
+                }
+                ExportEvent::Duplicates { count, samples } => {
+                    dialog.events = None;
+                    dialog.stage = ExportStage::Duplicates { count, samples };
                 }
                 ExportEvent::Finished(answer) => {
                     dialog.events = None;

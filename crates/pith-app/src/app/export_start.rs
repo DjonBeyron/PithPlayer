@@ -152,6 +152,11 @@ impl PithApp {
     /// Запрос за запросом на строку, всё в отдельном потоке: сеть в потоке
     /// интерфейса подвесила бы плеер на минуты.
     pub fn start_export(&mut self, ctx: &egui::Context) {
+        self.start_export_with(ctx, super::export_cev::DupPolicy::Ask);
+    }
+
+    /// То же с решением о повторах в базе (только для CodeEditVideo).
+    pub fn start_export_with(&mut self, ctx: &egui::Context, policy: super::export_cev::DupPolicy) {
         let Some(dialog) = self.export.as_ref() else {
             return;
         };
@@ -169,7 +174,7 @@ impl PithApp {
         }
 
         if self.settings.cev.enabled {
-            self.start_export_cev(ctx, rows);
+            self.start_export_cev(ctx, rows, policy);
             return;
         }
 

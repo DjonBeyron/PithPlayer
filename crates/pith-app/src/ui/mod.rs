@@ -13,6 +13,7 @@ mod bookmarks_row;
 mod controls;
 mod dialog;
 mod export;
+mod export_dup;
 mod export_form;
 mod export_report;
 mod extraction;

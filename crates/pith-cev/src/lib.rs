@@ -17,7 +17,7 @@ use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 
 pub use net::use_proxy;
-pub use record::{Entry, Report, append};
+pub use record::{Entry, Report, append, duplicate_indexes};
 
 const OWNER: &str = "DjonBeyron";
 const REPO: &str = "codeeditvideo-projects";
@@ -90,6 +90,11 @@ impl Cev {
             records,
             next_number: preview,
         })
+    }
+
+    /// Какие из отрезков уже есть в базе (тот же фильм и та же реплика).
+    pub fn duplicates(&self, film: &str, entries: &[Entry]) -> Result<Vec<usize>> {
+        Ok(duplicate_indexes(&self.read()?.doc, film, entries))
     }
 
     /// Добавляет записи одним коммитом.

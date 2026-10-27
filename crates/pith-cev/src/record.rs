@@ -85,6 +85,39 @@ pub fn append(
     })
 }
 
+/// Номера отрезков, которые в базе уже есть: тот же фильм и та же реплика.
+///
+/// Реплики сравниваются без учёта регистра и лишних пробелов: у записей
+/// из CodeEditVideo в конце бывает перевод строки, а на пробелах плеер
+/// и редактор расходятся чаще, чем в словах.
+pub fn duplicate_indexes(doc: &Value, film: &str, entries: &[Entry]) -> Vec<usize> {
+    let film = film.trim();
+
+    let existing: std::collections::HashSet<String> = doc
+        .get("records")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|r| r.get("film").and_then(Value::as_str).map(str::trim) == Some(film))
+        .filter_map(|r| r.get("eng").and_then(Value::as_str))
+        .map(normalize)
+        .collect();
+
+    entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !normalize(&e.text).is_empty() && existing.contains(&normalize(&e.text)))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn normalize(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
 fn record(entry: &Entry, actor: &str, film: &str, num: u64, at: u64) -> Value {
     let text = entry.text.trim();
     let mut map = Map::new();
@@ -193,6 +226,23 @@ mod tests {
 
         assert!(id.starts_with("cmvm"), "{id}");
         assert_eq!(id.len(), 13, "{id}");
+    }
+
+    #[test]
+    fn повтор_ищется_по_фильму_и_реплике() {
+        let d = json!({ "records": [
+            { "film": "Фильм: А", "eng": "He is nuts \n" },
+            { "film": "Фильм: Б", "eng": "Hello" }
+        ]});
+        let entries = [
+            entry("he  is NUTS", None),
+            entry("Hello", None),
+            entry("New", None),
+        ];
+
+        assert_eq!(duplicate_indexes(&d, "Фильм: А", &entries), vec![0]);
+        assert_eq!(duplicate_indexes(&d, "Фильм: Б", &entries), vec![1]);
+        assert!(duplicate_indexes(&d, "Фильм: В", &entries).is_empty());
     }
 
     #[test]

@@ -15,7 +15,28 @@ use super::export_log::{LogKind, LogLine};
 use super::export_start::summary;
 use super::transcription;
 
+/// Что делать с отрезками, которые в базе уже есть.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DupPolicy {
+    /// Спросить, если повторы найдены.
+    Ask,
+    /// Не выгружать повторы.
+    Skip,
+    /// Выгрузить всё, как есть.
+    Keep,
+}
+
+/// Сколько примеров повторов показывать в предупреждении.
+const SAMPLES: usize = 5;
+
 impl PithApp {
+    /// Вернуться от предупреждения о повторах к вопросу о названии.
+    pub fn export_back_to_question(&mut self) {
+        if let Some(dialog) = self.export.as_mut() {
+            dialog.stage = ExportStage::Asking;
+        }
+    }
+
     /// Подключено ли то место, куда сейчас идёт выгрузка.
     pub(super) fn export_target_ready(&self) -> bool {
         if self.settings.cev.enabled {
@@ -35,7 +56,12 @@ impl PithApp {
     }
 
     /// Отправляет активный список в CodeEditVideo. Сеть — в отдельном потоке.
-    pub(super) fn start_export_cev(&mut self, ctx: &egui::Context, mut rows: Vec<Row>) {
+    pub(super) fn start_export_cev(
+        &mut self,
+        ctx: &egui::Context,
+        mut rows: Vec<Row>,
+        policy: DupPolicy,
+    ) {
         let Some(cev) = Cev::new(&self.settings.cev.token) else {
             return;
         };
@@ -69,6 +95,32 @@ impl PithApp {
         }
 
         std::thread::spawn(move || {
+            if policy != DupPolicy::Keep {
+                match check_duplicates(&cev, &film_name, &mut rows, policy) {
+                    Ok(Some((count, samples))) => {
+                        let _ = sender.send(ExportEvent::Duplicates { count, samples });
+                        ctx.request_repaint();
+                        return;
+                    }
+                    Ok(None) => {}
+                    Err(why) => {
+                        let answer = Err(why);
+                        let _ = sender.send(ExportEvent::Log(summary(&answer)));
+                        let _ = sender.send(ExportEvent::Finished(Box::new(answer)));
+                        ctx.request_repaint();
+                        return;
+                    }
+                }
+            }
+
+            if rows.is_empty() {
+                let answer = Ok(empty_report());
+                let _ = sender.send(ExportEvent::Log(summary(&answer)));
+                let _ = sender.send(ExportEvent::Finished(Box::new(answer)));
+                ctx.request_repaint();
+                return;
+            }
+
             if sounding {
                 let sounds = sender.clone();
                 let ring = ctx.clone();
@@ -111,6 +163,53 @@ impl PithApp {
             let _ = sender.send(ExportEvent::Finished(Box::new(answer)));
             ctx.request_repaint();
         });
+    }
+}
+
+/// Проверка повторов. `Some` — нужно спросить человека; при `Skip` повторы
+/// молча убираются из списка.
+fn check_duplicates(
+    cev: &Cev,
+    film: &str,
+    rows: &mut Vec<Row>,
+    policy: DupPolicy,
+) -> Result<Option<(usize, Vec<String>)>, String> {
+    let entries: Vec<Entry> = rows.iter().map(entry).collect();
+    let dups = cev.duplicates(film, &entries).map_err(|e| e.to_string())?;
+
+    if dups.is_empty() {
+        return Ok(None);
+    }
+
+    if policy == DupPolicy::Ask {
+        let samples = dups
+            .iter()
+            .take(SAMPLES)
+            .map(|&i| rows[i].text.trim().to_string())
+            .collect();
+
+        return Ok(Some((dups.len(), samples)));
+    }
+
+    let mut index = 0;
+    rows.retain(|_| {
+        let keep = !dups.contains(&index);
+        index += 1;
+        keep
+    });
+
+    Ok(None)
+}
+
+/// Отчёт, когда после пропуска повторов выгружать нечего.
+fn empty_report() -> Report {
+    Report {
+        database_id: String::new(),
+        created: 0,
+        without_actor: 0,
+        failed: Vec::new(),
+        sample_taken: true,
+        first_number: 0,
     }
 }
 
