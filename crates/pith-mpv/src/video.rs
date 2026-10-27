@@ -96,9 +96,8 @@ impl Engine {
     /// видеокарта не успевает и картинка идёт рывками. Для кадров шире
     /// `HEAVY_VIDEO_WIDTH` включается простой билинейный режим; для
     /// остальных возвращаются значения `gpu-hq`.
-    pub fn tune_for_video_width(&mut self, width: i64, default_hwdec: &str) {
+    pub fn tune_for_video_width(&mut self, width: i64) {
         let heavy = width >= HEAVY_VIDEO_WIDTH;
-        self.tune_decoder(heavy, default_hwdec);
         let settings: [(&str, &str); 8] = if heavy {
             [
                 ("scale", "bilinear"),
@@ -134,38 +133,5 @@ impl Engine {
     }
 }
 
-/// Режим декодирования по умолчанию, для которого подбирается замена на 8К.
-const DEFAULT_ZERO_COPY: &str = "d3d11va,auto-copy";
-
-/// Декодеры для сверхбольшого кадра: сначала NVDEC.
-///
-/// На 8К `d3d11va` без копирования не заводится и mpv откатывается на
-/// `d3d11va-copy`: каждый кадр (около сотни мегабайт) гоняется через
-/// шину, и видео идёт медленнее нормы. NVDEC отдаёт кадр в OpenGL
-/// без копирования через CUDA. Нет NVIDIA — mpv возьмёт следующий.
-const HEAVY_HWDEC: &str = "nvdec,d3d11va,auto-copy";
-
 /// Ширина кадра, с которой включается облегчённое масштабирование.
 const HEAVY_VIDEO_WIDTH: i64 = 5000;
-
-impl Engine {
-    /// Переключает декодер на лету, когда файл относится к другому классу.
-    ///
-    /// Меняется только штатный режим: выбранные вручную `copy` и `software`
-    /// не трогаем. Переключение перезапускает декодер на текущем месте.
-    fn tune_decoder(&mut self, heavy: bool, default_hwdec: &str) {
-        if default_hwdec != DEFAULT_ZERO_COPY || self.state.heavy_decode == heavy {
-            return;
-        }
-
-        let value = if heavy { HEAVY_HWDEC } else { default_hwdec };
-
-        match self.set_property_string("hwdec", value) {
-            Ok(()) => {
-                self.state.heavy_decode = heavy;
-                tracing::info!(hwdec = value, "декодер переключён под размер кадра");
-            }
-            Err(e) => tracing::warn!(error = %e, "декодер не переключить"),
-        }
-    }
-}

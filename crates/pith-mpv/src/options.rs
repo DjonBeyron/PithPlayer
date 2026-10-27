@@ -6,7 +6,12 @@
 /// Режим аппаратного декодирования.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HwDec {
-    /// Нулевое копирование через `WGL_NV_DX_interop2` с откатом на копирование.
+    /// Нулевое копирование: NVDEC через CUDA, затем `d3d11va`, затем копирование.
+    ///
+    /// Журнал mpv на 8К AV1 показал: `d3d11va` в связке с OpenGL-отрисовкой
+    /// не заводится («Could not create device»), и mpv всегда падал на
+    /// `d3d11va-copy` — каждый кадр гоняется через память. NVDEC отдаёт кадр
+    /// в OpenGL без копирования, поэтому идёт первым; нет NVIDIA — следующий.
     ///
     /// Замеры этапа 0 на 4К HEVC HDR (RTX 3070 Ti): 63 % ядра против 115 %
     /// у копирующего режима и 145 % у программного. Расширение есть не на
@@ -30,7 +35,7 @@ impl HwDec {
     /// Список через запятую — это порядок предпочтения, а не перечисление.
     pub fn as_mpv_value(self) -> &'static str {
         match self {
-            Self::ZeroCopy => "d3d11va,auto-copy",
+            Self::ZeroCopy => "nvdec,d3d11va,auto-copy",
             Self::Copy => "auto-copy",
             Self::Software => "no",
         }

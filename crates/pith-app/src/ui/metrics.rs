@@ -76,8 +76,8 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 fn hwdec_label(hwdec: pith_mpv::HwDec) -> &'static str {
     match hwdec {
         pith_mpv::HwDec::ZeroCopy => tr!(
-            "Аппаратное, без копирования (d3d11va с откатом)",
-            "Hardware, zero-copy (d3d11va with fallback)"
+            "Аппаратное, без копирования (nvdec, d3d11va с откатом)",
+            "Hardware, zero-copy (nvdec, d3d11va with fallback)"
         ),
         pith_mpv::HwDec::Copy => tr!(
             "Аппаратное с копированием (auto-copy)",
