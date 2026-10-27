@@ -207,8 +207,8 @@ begin
       [PreviousVersion, '{#Version}', UserDataDir, BackupDir])
   else
     Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'),
-      [PreviousVersion, '{#Version}', UserDataDir, BackupDir]) +
-      #13#10#13#10 + ExpandConstant('{cm:UpgradeNoData}');
+      [PreviousVersion, '{#Version}', UserDataDir, BackupDir]) + #13#10 + #13#10 +
+      ExpandConstant('{cm:UpgradeNoData}');
 
   UpgradePage := CreateOutputMsgPage(wpWelcome,
     ExpandConstant('{cm:UpgradeTitle}'),
