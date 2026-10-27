@@ -178,6 +178,17 @@ impl PithApp {
                 AccessStatus::Failed(why)
             }
         };
+
+        // Проверенные настройки рабочие — запоминаем сразу, не дожидаясь
+        // «Сохранить»: закрытое окно иначе уносило токен вместе с черновиком.
+        if matches!(
+            self.integrations.status,
+            AccessStatus::Ok | AccessStatus::Verified(_)
+        ) {
+            let verified = self.integrations.status.clone();
+            self.save_integrations();
+            self.integrations.status = verified;
+        }
     }
 }
 
