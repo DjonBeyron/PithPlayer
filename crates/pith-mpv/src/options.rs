@@ -8,6 +8,11 @@
 pub enum HwDec {
     /// Нулевое копирование: NVDEC через CUDA, затем `d3d11va`, затем копирование.
     ///
+    /// Вместо `auto-copy` — одно `d3d11va-copy`: `auto-copy` перебирает все
+    /// драйверы подряд, и файл, который железо не умеет (H.264 10 бит),
+    /// терял на этом больше секунды при каждом открытии. Не вышло — mpv
+    /// сразу уходит на программное декодирование.
+    ///
     /// Журнал mpv на 8К AV1 показал: `d3d11va` в связке с OpenGL-отрисовкой
     /// не заводится («Could not create device»), и mpv всегда падал на
     /// `d3d11va-copy` — каждый кадр гоняется через память. NVDEC отдаёт кадр
@@ -35,7 +40,7 @@ impl HwDec {
     /// Список через запятую — это порядок предпочтения, а не перечисление.
     pub fn as_mpv_value(self) -> &'static str {
         match self {
-            Self::ZeroCopy => "nvdec,d3d11va,auto-copy",
+            Self::ZeroCopy => "nvdec,d3d11va,d3d11va-copy",
             Self::Copy => "auto-copy",
             Self::Software => "no",
         }

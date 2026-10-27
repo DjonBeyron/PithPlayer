@@ -103,6 +103,16 @@ impl Engine {
     /// остальных возвращаются значения `gpu-hq`.
     pub fn tune_for_video_width(&mut self, width: i64) {
         let heavy = width >= HEAVY_VIDEO_WIDTH;
+
+        // Значения по умолчанию (`gpu-hq`) совпадают с «обычными» ниже, так что
+        // пока класс файла не менялся, трогать нечего. Каждое свойство —
+        // синхронный запрос к mpv, а на загрузке он занят: запросы замораживали
+        // окно почти на секунду даже на обычном видео.
+        if heavy == self.state.heavy_scaling {
+            return;
+        }
+        self.state.heavy_scaling = heavy;
+
         let settings: [(&str, &str); 8] = if heavy {
             [
                 ("scale", "bilinear"),

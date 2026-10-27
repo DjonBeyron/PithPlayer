@@ -1,4 +1,4 @@
-# Pith Player 5.1.59
+# Pith Player 5.1.60
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,8 +8,8 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.59-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.59-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.60-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.60-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
@@ -58,6 +58,13 @@ reads and writes nothing.
   timeline, drag, or arrow keys) instead of staying on pause.
 - **Opening another video no longer waits for the seek preview** to finish its
   work in the background.
+- **A file sent to a running player while it is paused or finished opens at
+  once** (the window used to sleep until the mouse moved).
+- **Opening a video no longer freezes the window for a second**: scaling
+  settings are touched only for 8K files, and after the first frame.
+- **Faster start for files the GPU cannot decode** (for example 10-bit H.264).
+- **The log is appended, not overwritten**, and developer mode writes at
+  debug level.
 - **Developer mode**: click the version number three times in the Update
   window to choose a folder for the logs (`pith-player.log`, `mpv.log`).
 

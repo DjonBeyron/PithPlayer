@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, OnceLock};
 
 use pith_store::DataPaths;
 
@@ -27,9 +28,22 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(15
 /// Приёмник путей к файлам от других запусков плеера.
 pub struct InstanceServer {
     receiver: Receiver<PathBuf>,
+    wake: Arc<OnceLock<Waker>>,
 }
 
+/// Будит интерфейс, когда пришёл файл.
+///
+/// Без этого при паузе и на последнем кадре окно спит, не перерисовывается
+/// и не заглядывает в канал: присланный файл ждал первого движения мыши
+/// (десятки секунд).
+pub type Waker = Box<dyn Fn() + Send + Sync>;
+
 impl InstanceServer {
+    /// Называет способ разбудить интерфейс. Вызывается один раз при запуске.
+    pub fn set_waker(&self, waker: Waker) {
+        let _ = self.wake.set(waker);
+    }
+
     /// Пути, присланные другими запусками с прошлого кадра.
     pub fn pending_files(&self) -> Vec<PathBuf> {
         self.receiver.try_iter().collect()
@@ -62,6 +76,7 @@ pub fn become_primary_or_forward(paths: &DataPaths, file: Option<&str>) -> Optio
             tracing::warn!(error = %e, "не удалось занять локальный порт, работаю как отдельное окно");
             return Some(InstanceServer {
                 receiver: channel().1,
+                wake: Arc::new(OnceLock::new()),
             });
         }
     };
@@ -70,10 +85,11 @@ pub fn become_primary_or_forward(paths: &DataPaths, file: Option<&str>) -> Optio
     write_port(paths, port);
 
     let (sender, receiver) = channel();
-    spawn_listener(listener, sender);
+    let wake = Arc::new(OnceLock::new());
+    spawn_listener(listener, sender, Arc::clone(&wake));
 
     tracing::info!(port, "этот экземпляр стал основным");
-    Some(InstanceServer { receiver })
+    Some(InstanceServer { receiver, wake })
 }
 
 /// Убирает файл с портом при выходе.
@@ -82,7 +98,7 @@ pub fn release(paths: &DataPaths) {
 }
 
 /// Принимает подключения в фоне и складывает пути в канал.
-fn spawn_listener(listener: TcpListener, sender: Sender<PathBuf>) {
+fn spawn_listener(listener: TcpListener, sender: Sender<PathBuf>, wake: Arc<OnceLock<Waker>>) {
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };
@@ -97,6 +113,10 @@ fn spawn_listener(listener: TcpListener, sender: Sender<PathBuf>) {
                 if sender.send(path).is_err() {
                     // Приложение закрылось — слушать больше некому.
                     break;
+                }
+
+                if let Some(waker) = wake.get() {
+                    waker();
                 }
             }
         }

@@ -21,6 +21,11 @@ impl PithApp {
         args: crate::cli::Args,
         instance: crate::single_instance::InstanceServer,
     ) -> Self {
+        // Присланный другим запуском файл должен будить окно: на паузе
+        // и на последнем кадре оно иначе не перерисовывается.
+        let wake_ctx = cc.egui_ctx.clone();
+        instance.set_waker(Box::new(move || wake_ctx.request_repaint()));
+
         let data_paths = DataPaths::discover();
         let mut settings = Settings::load(&data_paths);
         let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());

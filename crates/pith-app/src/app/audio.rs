@@ -46,6 +46,13 @@ impl PithApp {
         self.refresh_tracks();
 
         self.refresh_decoder_info();
+
+        // К первому кадру mpv свободен: подбираем масштабирование под размер
+        // кадра (8К не тянет дорогое). На загрузке эти запросы замораживали окно.
+        if let Some(engine) = self.engine.as_mut() {
+            let width = engine.state().display_width;
+            engine.tune_for_video_width(width);
+        }
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
