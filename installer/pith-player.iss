@@ -202,13 +202,10 @@ begin
   if PreviousVersion = '' then
     Exit;
 
-  if DirExists(UserDataDir) then
-    Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'),
-      [PreviousVersion, '{#Version}', UserDataDir, BackupDir])
-  else
-    Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'),
-      [PreviousVersion, '{#Version}', UserDataDir, BackupDir]) + #13#10 + #13#10 +
-      ExpandConstant('{cm:UpgradeNoData}');
+  Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'), [PreviousVersion, '{#Version}', UserDataDir, BackupDir]);
+
+  if not DirExists(UserDataDir) then
+    Text := Text + #13#10 + #13#10 + ExpandConstant('{cm:UpgradeNoData}');
 
   UpgradePage := CreateOutputMsgPage(wpWelcome,
     ExpandConstant('{cm:UpgradeTitle}'),
