@@ -32,6 +32,7 @@ const BUTTONS_HEIGHT: f32 = 48.0;
 /// Что нажали в окне.
 enum Action {
     Check,
+    CheckDeepl,
     Save,
     Close,
 }
@@ -57,7 +58,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                     .inner_margin(egui::Margin::same(PADDING)),
             )
             .show(ctx, |ui| {
-                if let Some(chosen) = show_body(app.integrations_state(), ui) {
+                if let Some(chosen) = show_body(app, ui) {
                     action = Some(chosen);
                 }
             });
@@ -69,13 +70,14 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
     match action {
         Some(Action::Check) => app.check_notion_access(ctx),
+        Some(Action::CheckDeepl) => app.check_deepl(ctx),
         Some(Action::Save) => app.save_integrations(),
         Some(Action::Close) => app.close_integrations(),
         None => {}
     }
 }
 
-fn show_body(state: &mut IntegrationsState, ui: &mut egui::Ui) -> Option<Action> {
+fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
     panel_head::style_boxes(ui);
 
     let mut action = None;
@@ -84,6 +86,7 @@ fn show_body(state: &mut IntegrationsState, ui: &mut egui::Ui) -> Option<Action>
         .auto_shrink([false, false])
         .max_height((ui.available_height() - BUTTONS_HEIGHT).max(0.0))
         .show(ui, |ui| {
+            let state = app.integrations_state();
             super::integrations_cev::show_target(state, ui);
             ui.add_space(12.0);
 
@@ -95,6 +98,10 @@ fn show_body(state: &mut IntegrationsState, ui: &mut egui::Ui) -> Option<Action>
 
             ui.add_space(16.0);
             show_tmdb(state, ui);
+
+            if super::integrations_deepl::show_deepl(app, ui) {
+                action = Some(Action::CheckDeepl);
+            }
         });
 
     if let Some(chosen) = show_buttons(ui) {

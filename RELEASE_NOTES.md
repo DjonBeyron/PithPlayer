@@ -1,4 +1,4 @@
-# Pith Player 5.1.61
+# Pith Player 5.1.62
 
 A Windows video player for people who cut clips out of video. Watch, mark the
 moments with `T`, press one button — every mark becomes its own video file, in
@@ -8,8 +8,8 @@ seconds, without re-encoding and without losing quality.
 
 | File | What it is |
 |---|---|
-| `PithPlayer-5.1.61-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
-| `PithPlayer-5.1.61-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
+| `PithPlayer-5.1.62-setup.exe` | Installer. Offers to download FFmpeg, so cutting works out of the box. |
+| `PithPlayer-5.1.62-portable.zip` | Unzip anywhere and run `pith-player.exe`. |
 
 Windows 10 or 11, 64-bit. Nothing else to install.
 
@@ -72,6 +72,9 @@ reads and writes nothing.
   GitHub token and what permissions it needs.
 - **The GitHub token survives reinstalling and older versions**: it is kept in
   its own file and also restored from the installer's backup copy.
+- **Translate subtitles with DeepL**: hover a line in the picture, click the
+  small «A·Я» icon, and the translation appears under it. Pick the target
+  languages and set the key in Integrations; the key survives reinstalling.
 - **Developer mode**: click the version number three times in the Update
   window to choose a folder for the logs (`pith-player.log`, `mpv.log`).
 

@@ -9,8 +9,8 @@ use pith_store::{DataPaths, Settings, WatchPositions};
 use crate::bench::Metrics;
 
 use super::{
-    ActorsState, IntegrationsState, PithApp, SubtitleText, crop, extraction, import_v4, photos,
-    preview, search, subtitles,
+    ActorsState, DeeplState, IntegrationsState, PithApp, SubtitleText, crop, extraction, import_v4,
+    photos, preview, search, subtitles,
 };
 
 impl PithApp {
@@ -30,6 +30,7 @@ impl PithApp {
         let mut settings = Settings::load(&data_paths);
         // Токен GitHub переживает переустановку и старые версии плеера.
         settings.cev.restore(&data_paths);
+        let deepl_settings = pith_store::DeeplSettings::load(&data_paths);
         let mut bookmarks = pith_store::Bookmarks::load(data_paths.clone());
 
         // Язык поднимаем до первого кадра: иначе интерфейс успел бы
@@ -107,6 +108,7 @@ impl PithApp {
             update: Default::default(),
             update_checked: false,
             decoder_info: String::new(),
+            deepl: DeeplState::new(deepl_settings),
             export: None,
             settings,
             data_paths,

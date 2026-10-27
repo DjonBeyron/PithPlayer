@@ -6,6 +6,7 @@
 mod bookmarks;
 mod cast;
 mod cev;
+mod deepl;
 mod dev;
 mod error;
 mod file;
@@ -28,6 +29,7 @@ pub use bookmarks::{
 };
 pub use cast::{CastMember, CastStore, VideoCast};
 pub use cev::CevSettings;
+pub use deepl::{DeeplSettings, LANGUAGES as DEEPL_LANGUAGES};
 pub use dev::DevSettings;
 pub use error::{Result, StoreError};
 pub use file_key::{FileKey, file_key, key_from_parts};

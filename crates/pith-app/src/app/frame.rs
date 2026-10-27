@@ -60,6 +60,7 @@ impl eframe::App for PithApp {
         // Обновление: тихий вопрос при запуске и ответы, пришедшие из сети.
         self.check_update_quietly(ui.ctx());
         self.poll_update(ui.ctx());
+        self.poll_deepl();
         self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
         self.announce_maximized(frame);

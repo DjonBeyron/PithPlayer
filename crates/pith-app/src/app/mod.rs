@@ -12,6 +12,7 @@ mod bookmarks_panel;
 mod child_window;
 mod clipboard;
 mod crop;
+mod deepl;
 mod dev_mode;
 mod dialogs;
 mod dictionary;
@@ -61,6 +62,7 @@ pub use actor_rename::ActorRename;
 pub use actors::{ActorsState, CastStatus, PhotoPreview};
 pub use bookmark_rename::BookmarkRename;
 use clipboard::Notice;
+pub use deepl::DeeplState;
 pub use export::{ExportDialog, ExportStage, NameLanguage};
 pub use export_cev::DupPolicy;
 pub use export_log::{LogKind, LogLine};
@@ -201,6 +203,8 @@ pub struct PithApp {
     update_checked: bool,
     /// Чем реально декодируется текущий файл: режим и кодек (для панели замеров).
     pub decoder_info: String,
+    /// Перевод реплик через DeepL: настройки, память и показанный перевод.
+    deepl: DeeplState,
     /// Открытое окно выгрузки отрезков в Notion.
     export: Option<ExportDialog>,
     /// Панель отрезков показана наведением на правый край.

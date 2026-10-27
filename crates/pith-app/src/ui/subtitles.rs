@@ -99,12 +99,27 @@ fn show_layer(app: &mut PithApp, ctx: &egui::Context, layer: Layer, line: &str) 
         });
 
     let label = response.inner;
+    let rect = response.response.rect;
 
     if label.hovered() || label.dragged() {
         ctx.set_cursor_icon(egui::CursorIcon::Grab);
     }
 
     handle_interaction(app, ctx, layer, line, &label, screen);
+
+    // Значок перевода: только для настоящих реплик, не для примера настройки.
+    if !app.subtitle_style_open() {
+        let font = egui::FontId::new(layout.font_size * 0.9, layer_family(layer));
+        super::subtitle_translate::show(app, ctx, layer.id(), line, rect, font);
+    }
+}
+
+/// Шрифт слоя — перевод набирается им же.
+fn layer_family(layer: Layer) -> egui::FontFamily {
+    match layer {
+        Layer::Main => crate::fonts::main_subtitle_family(),
+        Layer::Secondary => crate::fonts::secondary_subtitle_family(),
+    }
 }
 
 /// Рисует строку выбранным цветом и начертанием.
