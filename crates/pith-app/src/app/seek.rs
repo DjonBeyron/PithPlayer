@@ -23,7 +23,12 @@ impl PithApp {
 
         // Нажали, пока mpv не ответил на прошлое, — значит жмут подряд,
         // и это место промежуточное.
-        if self.key_seek_in_flight {
+        // На 8К точная перемотка стоит секунд (декодирование от опорного
+        // кадра): сначала показываем ближайший опорный кадр — картинка
+        // меняется сразу, — а точное место доводится следом.
+        let heavy = self.engine.as_ref().is_some_and(|e| e.is_heavy_frame());
+
+        if self.key_seek_in_flight || heavy {
             self.key_seek_rough = true;
         }
 
