@@ -74,6 +74,12 @@ impl Engine {
         Ok(())
     }
 
+    /// Кодек видеопотока по названию mpv: `vp9`, `av1`, `hevc`…
+    pub fn video_codec(&self) -> String {
+        self.property_string("video-codec")
+            .unwrap_or_else(|_| "неизвестно".into())
+    }
+
     /// Фактически применённый режим аппаратного декодирования.
     ///
     /// Отличается от запрошенного, если mpv не смог включить нужный режим
@@ -92,7 +98,7 @@ impl Engine {
     /// остальных возвращаются значения `gpu-hq`.
     pub fn tune_for_video_width(&mut self, width: i64) {
         let heavy = width >= HEAVY_VIDEO_WIDTH;
-        let settings: [(&str, &str); 6] = if heavy {
+        let settings: [(&str, &str); 8] = if heavy {
             [
                 ("scale", "bilinear"),
                 ("dscale", "bilinear"),
@@ -100,6 +106,10 @@ impl Engine {
                 ("dither-depth", "no"),
                 ("correct-downscaling", "no"),
                 ("deband", "no"),
+                // Линейный свет при уменьшении и сигмоида при увеличении —
+                // отдельные проходы по всему кадру, на 8К самые дорогие.
+                ("linear-downscaling", "no"),
+                ("sigmoid-upscaling", "no"),
             ]
         } else {
             [
@@ -108,7 +118,9 @@ impl Engine {
                 ("cscale", "spline36"),
                 ("dither-depth", "auto"),
                 ("correct-downscaling", "yes"),
-                ("deband", "yes"),
+                ("deband", "no"),
+                ("linear-downscaling", "yes"),
+                ("sigmoid-upscaling", "yes"),
             ]
         };
 

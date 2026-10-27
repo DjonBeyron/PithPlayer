@@ -196,6 +196,8 @@ pub struct PithApp {
     update: UpdateState,
     /// Спрашивали ли GitHub в этот запуск — тихая проверка идёт один раз.
     update_checked: bool,
+    /// Чем реально декодируется текущий файл: режим и кодек (для панели замеров).
+    pub decoder_info: String,
     /// Открытое окно выгрузки отрезков в Notion.
     export: Option<ExportDialog>,
     /// Панель отрезков показана наведением на правый край.

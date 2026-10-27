@@ -99,6 +99,7 @@ impl PithApp {
             actor_rename: None,
             update: Default::default(),
             update_checked: false,
+            decoder_info: String::new(),
             export: None,
             settings,
             data_paths,

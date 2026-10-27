@@ -40,7 +40,9 @@ AppId={{8E5C1B0A-4F2D-4C58-9E3B-1B7A9D6C3F41}
 AppName={#AppName}
 AppVersion={#Version}
 AppPublisher={#Publisher}
-DefaultDirName={autopf}\PithPlayer
+; Папка прежней установки, если плеер уже стоит: новая версия ложится поверх,
+; а не рядом (см. DefaultAppDir в [Code]).
+DefaultDirName={code:DefaultAppDir}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
@@ -180,6 +182,29 @@ begin
   if RegQueryStringValue(HKLM, Key, 'DisplayVersion', Result) then Exit;
   if RegQueryStringValue(HKCU, Key, 'DisplayVersion', Result) then Exit;
   Result := '';
+end;
+
+{ Папка прежней установки: ищем и в системной ветке реестра, и в профиле —
+  первая установка могла быть в другом режиме, чем нынешняя. }
+function FindPreviousPath: String;
+var
+  Key: String;
+begin
+  Result := '';
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E5C1B0A-4F2D-4C58-9E3B-1B7A9D6C3F41}_is1';
+
+  if not RegQueryStringValue(HKLM, Key, 'Inno Setup: App Path', Result) then
+    if not RegQueryStringValue(HKCU, Key, 'Inno Setup: App Path', Result) then
+      Result := '';
+end;
+
+{ Папка установки по умолчанию: прежняя, если она есть, иначе стандартная. }
+function DefaultAppDir(Param: String): String;
+begin
+  Result := FindPreviousPath;
+
+  if (Result = '') or not DirExists(Result) then
+    Result := ExpandConstant('{autopf}\PithPlayer');
 end;
 
 function UserDataDir: String;

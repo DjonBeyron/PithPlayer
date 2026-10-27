@@ -49,6 +49,8 @@ impl PithApp {
             return;
         };
 
+        self.decoder_info = format!("{} · {}", engine.active_hwdec(), engine.video_codec());
+
         tracing::info!(
             hwdec_active = %engine.active_hwdec(),
             звук = %engine.audio_summary(),

@@ -44,12 +44,18 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new(tr!(
                         format!(
-                            "Кадр: {}×{}\nСкорость: {:.2}×",
-                            state.display_width, state.display_height, state.speed
+                            "Кадр: {}×{}\nСкорость: {:.2}×\nДекодер: {}",
+                            state.display_width,
+                            state.display_height,
+                            state.speed,
+                            app.decoder_info
                         ),
                         format!(
-                            "Frame: {}×{}\nSpeed: {:.2}×",
-                            state.display_width, state.display_height, state.speed
+                            "Frame: {}×{}\nSpeed: {:.2}×\nDecoder: {}",
+                            state.display_width,
+                            state.display_height,
+                            state.speed,
+                            app.decoder_info
                         )
                     ))
                     .color(theme::TEXT_SECONDARY)
