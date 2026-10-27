@@ -46,6 +46,8 @@ pub struct PlaybackState {
     pub display_width: i64,
     /// Отображаемая высота кадра с учётом поворота (`video-params/dh`).
     pub display_height: i64,
+    /// Для этого файла включён набор декодеров для сверхбольшого кадра.
+    pub heavy_decode: bool,
     /// Текущая реплика основных субтитров.
     pub subtitle: Option<String>,
     /// Текущая реплика вторых субтитров.

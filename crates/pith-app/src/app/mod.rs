@@ -12,6 +12,7 @@ mod bookmarks_panel;
 mod child_window;
 mod clipboard;
 mod crop;
+mod dev_mode;
 mod dialogs;
 mod dictionary;
 mod export;

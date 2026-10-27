@@ -148,6 +148,8 @@ impl PithApp {
         // (pith-mpv/observe.rs) — спрашивать mpv не нужно.
 
         if seek_done {
+            // После перезапуска декодера (8К) режим мог смениться.
+            self.refresh_decoder_info();
             // Замер закрывается первым: следующая перемотка из очереди
             // уходит тут же и завела бы отсчёт заново. Прежде замер
             // закрывался следующим кадром и показывал единицы
@@ -197,10 +199,11 @@ impl PithApp {
             // У нового видео свои поля — прежняя обрезка к нему не подходит.
             self.forget_crop();
             // 8К не тянет дорогое масштабирование — подбираем под размер кадра.
+            let default_hwdec = self.hwdec.as_mpv_value();
             if let Some(engine) = self.engine.as_mut()
                 && let Some((width, _)) = engine.demux_video_size()
             {
-                engine.tune_for_video_width(width);
+                engine.tune_for_video_width(width, default_hwdec);
             }
         }
 

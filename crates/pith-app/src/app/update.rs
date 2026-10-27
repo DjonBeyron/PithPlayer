@@ -55,6 +55,8 @@ pub struct UpdateState {
     checking: Option<Receiver<Result<Option<Box<Release>>, String>>>,
     /// Ход загрузки: числа идут потоком, итог — последним сообщением.
     loading: Option<Receiver<Progress>>,
+    /// Режим разработчика (три щелчка по номеру версии).
+    pub(super) dev: super::dev_mode::DevPanel,
 }
 
 /// Весточка от потока загрузки.

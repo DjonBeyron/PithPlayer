@@ -46,6 +46,7 @@ pub mod subtitles;
 mod time_label;
 mod timeline;
 mod update;
+mod update_dev;
 mod volume;
 
 pub use actors::show as show_actors_window;

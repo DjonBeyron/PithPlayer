@@ -162,6 +162,14 @@ impl PithApp {
     }
 }
 
+/// Журнал mpv в папке режима разработчика, если она задана.
+fn dev_mpv_log() -> Option<String> {
+    let dev = pith_store::DevSettings::load(&pith_store::DataPaths::discover());
+
+    dev.log_dir()
+        .map(|dir| dir.join("mpv.log").to_string_lossy().into_owned())
+}
+
 /// Собирает настройки движка из сохранённых предпочтений.
 fn engine_options(hwdec: HwDec, settings: &Settings) -> EngineOptions {
     EngineOptions {
@@ -175,6 +183,6 @@ fn engine_options(hwdec: HwDec, settings: &Settings) -> EngineOptions {
         // Подробный журнал mpv включается переменной окружения
         // PITH_MPV_LOG=<путь>: он нужен для разбора того, на что
         // уходит время открытия файла, и в обычной работе не пишется.
-        log_file: std::env::var("PITH_MPV_LOG").ok(),
+        log_file: std::env::var("PITH_MPV_LOG").ok().or_else(dev_mpv_log),
     }
 }

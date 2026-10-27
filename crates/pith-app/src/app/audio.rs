@@ -45,17 +45,23 @@ impl PithApp {
         self.select_tracks_by_tags();
         self.refresh_tracks();
 
+        self.refresh_decoder_info();
         let Some(engine) = self.engine.as_ref() else {
             return;
         };
-
-        self.decoder_info = format!("{} · {}", engine.active_hwdec(), engine.video_codec());
 
         tracing::info!(
             hwdec_active = %engine.active_hwdec(),
             звук = %engine.audio_summary(),
             "воспроизведение пошло"
         );
+    }
+
+    /// Запоминает, чем реально декодируется файл — для панели замеров.
+    pub(super) fn refresh_decoder_info(&mut self) {
+        if let Some(engine) = self.engine.as_ref() {
+            self.decoder_info = format!("{} · {}", engine.active_hwdec(), engine.video_codec());
+        }
     }
 
     /// Выключен ли звук.

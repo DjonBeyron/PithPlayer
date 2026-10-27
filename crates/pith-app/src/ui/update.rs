@@ -89,13 +89,24 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
     );
 
     ui.add_space(4.0);
-    dialog::hint(
-        ui,
-        &tr!(
-            format!("Установлена версия {}", crate::VERSION),
-            format!("Version {} is installed", crate::VERSION)
-        ),
+    let version = ui.add(
+        egui::Label::new(
+            egui::RichText::new(tr!(
+                format!("Установлена версия {}", crate::VERSION),
+                format!("Version {} is installed", crate::VERSION)
+            ))
+            .color(theme::PANEL_MUTED)
+            .size(12.0),
+        )
+        .sense(egui::Sense::click()),
     );
+    // Три щелчка подряд — режим разработчика.
+    if version.clicked() {
+        app.dev_version_clicked();
+    }
+    if app.dev_panel().open {
+        super::update_dev::show_dev(app, ui);
+    }
 
     ui.add_space(12.0);
 

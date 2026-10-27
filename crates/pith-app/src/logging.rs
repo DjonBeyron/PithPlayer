@@ -41,6 +41,15 @@ fn log_file() -> Option<File> {
 }
 
 fn log_path() -> Option<PathBuf> {
+    // Режим разработчика: журнал в папке, которую выбрал пользователь.
+    // Нужен, когда рядом с exe писать нельзя (Program Files).
+    let dev = pith_store::DevSettings::load(&pith_store::DataPaths::discover());
+    if let Some(dir) = dev.log_dir()
+        && std::fs::create_dir_all(&dir).is_ok()
+    {
+        return Some(dir.join("pith-player.log"));
+    }
+
     let mut path = std::env::current_exe().ok()?;
     path.set_file_name("pith-player.log");
     Some(path)
