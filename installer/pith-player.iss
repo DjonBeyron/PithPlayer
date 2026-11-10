@@ -51,7 +51,8 @@ SetupIconFile=..\crates\pith-app\assets\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/max
 SolidCompression=yes
-WizardStyle=modern
+; Тёмное оформление мастера установки и удаления (Inno Setup 6.6+).
+WizardStyle=modern dark
 ; Загруженный FFmpeg приходит в zip, а не в 7z.
 ArchiveExtraction=full
 ; 64-разрядная программа: 32-разрядной сборки нет.
@@ -83,12 +84,20 @@ ru.FfmpegCheck=Скачать FFmpeg (рекомендуется)
 ru.FfmpegFailed=Не удалось скачать FFmpeg: %1%nПлеер всё равно будет установлен — нарезка станет доступна, когда рядом с ним появятся ffmpeg.exe и ffprobe.exe.
 en.UpgradeTitle=Update of an installed version
 en.UpgradeSubtitle=Pith Player is already on this computer
-en.UpgradeText=Version %1 of Pith Player is installed. It will be replaced with version %2.%n%nYour data stays where it is: bookmarks, settings, watch positions, cast and the dictionary live in %3 and the installer does not touch them. As a precaution, copies of the main files are saved to:%n%4
-en.UpgradeNoData=No user data found yet - nothing to preserve.
+en.UpgradeText=Version %1 is installed and will be replaced with version %2, in the same folder.%n%nBy default your data stays untouched: bookmarks, watch positions, history, cast, settings, keys and the dictionary live in %3. Before any change copies of the main files are saved to:%n%4
+en.UpgradeNoVersion=No installed version found.%n%nUser data from an earlier installation was found in %1 and stays untouched by default.
+en.DeleteDataCheck=Delete my old data first: bookmarks, watch positions, history and cast lists (settings and keys stay)
+en.DeleteDataConfirm=The bookmarks, watch positions, history and cast lists will be deleted.%n%nA copy is saved first to:%n%1%n%nDelete them?
+en.DeleteDataNoBackup=A copy of your data could not be made, so nothing was deleted.
+en.UninstallAskData=Remove your player data too (bookmarks, watch positions, history, settings, keys)?%n%nChoose No to keep them: the next installation will pick them up.
 ru.UpgradeTitle=Обновление установленной версии
 ru.UpgradeSubtitle=Pith Player уже стоит на этом компьютере
-ru.UpgradeText=Установлена версия %1 плеера Pith Player. Она будет заменена на версию %2.%n%nВаши данные останутся на месте: закладки, настройки, позиции просмотра, составы актёров и словарь лежат в %3, установщик их не трогает. На всякий случай копии главных файлов сохраняются в:%n%4
-ru.UpgradeNoData=Пользовательских данных пока нет - сохранять нечего.
+ru.UpgradeText=Установлена версия %1. Она будет заменена на версию %2, в той же папке.%n%nПо умолчанию ваши данные остаются нетронутыми: закладки, позиции просмотра, история, составы актёров, настройки, ключи и словарь лежат в %3. Перед любыми изменениями копии главных файлов сохраняются в:%n%4
+ru.UpgradeNoVersion=Установленной версии не найдено.%n%nНайдены данные прежней установки в %1, по умолчанию они остаются нетронутыми.
+ru.DeleteDataCheck=Сначала удалить мои старые данные: закладки, позиции просмотра, историю и составы актёров (настройки и ключи останутся)
+ru.DeleteDataConfirm=Будут удалены закладки, позиции просмотра, история и составы актёров.%n%nСначала копия сохранится в:%n%1%n%nУдалить?
+ru.DeleteDataNoBackup=Копию данных сделать не удалось, поэтому ничего не удалено.
+ru.UninstallAskData=Удалить и данные плеера (закладки, позиции просмотра, историю, настройки, ключи)?%n%nНажмите «Нет», чтобы сохранить их: следующая установка их подхватит.
 en.AssociateVideo=Open video files with Pith Player (mkv, mp4, avi, mov and 11 more)
 ru.AssociateVideo=Открывать видеофайлы плеером (mkv, mp4, avi, mov и ещё 11)
 en.VideoType=Pith Player video
@@ -168,7 +177,7 @@ Type: files; Name: "{app}\ffprobe.exe"
 [Code]
 var
   PreviousVersion: String;
-  UpgradePage: TOutputMsgWizardPage;
+  UpgradePage: TInputOptionWizardPage;
 
 { Номер установленной версии: мастер Inno записывает его в раздел
   удаления программ под тем же AppId. Пусто — плеера на компьютере нет. }
@@ -217,46 +226,125 @@ begin
   Result := UserDataDir + '\backup\' + PreviousVersion;
 end;
 
-{ Страница о замене старой версии: что будет заменено и что с данными. }
+{ Файлы данных, которые удаляет галочка «удалить старые данные».
+  Настройки, ключи (cev.json, deepl.json, settings.json) и словарь
+  не входят: это не закладки, и терять их без нужды не стоит. }
+function DeletableData: String;
+begin
+  Result := 'bookmarks.json,watch_positions.json,history.json,cast.json';
+end;
+
+{ Есть ли что сохранять: прежняя версия или файлы данных. }
+function HasUserData: Boolean;
+begin
+  Result := DirExists(UserDataDir) and
+    (FileExists(UserDataDir + '\bookmarks.json') or FileExists(UserDataDir + '\settings.json'));
+end;
+
+{ Папка копии: версия и время — повторная установка не затирает прежнюю копию. }
+function MakeBackupDir: String;
+begin
+  Result := UserDataDir + '\backup\' + PreviousVersion + '_' +
+    GetDateTimeString('yyyy-mm-dd', '-', #0) + '_' +
+    GetDateTimeString('hh', #0, #0) + GetDateTimeString('nn', #0, #0);
+end;
+
+var
+  BackupFolder: String;
+
+{ Страница о замене старой версии и галочка удаления данных.
+  Галочка выключена по умолчанию. Страницы нет, если нет ни прежней
+  версии, ни данных. Ничего не удаляется, пока человек не нажмёт «Установить»:
+  отмена на любом шаге оставляет всё как было. }
 procedure CreateUpgradePage;
 var
   Text: String;
 begin
   PreviousVersion := FindPreviousVersion;
 
-  if PreviousVersion = '' then
+  if (PreviousVersion = '') and not HasUserData then
     Exit;
 
-  Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'), [PreviousVersion, '{#Version}', UserDataDir, BackupDir]);
+  BackupFolder := MakeBackupDir;
 
-  if not DirExists(UserDataDir) then
-    Text := Text + #13#10 + #13#10 + ExpandConstant('{cm:UpgradeNoData}');
+  if PreviousVersion <> '' then
+    Text := FmtMessage(ExpandConstant('{cm:UpgradeText}'), [PreviousVersion, '{#Version}', UserDataDir, BackupFolder])
+  else
+    Text := FmtMessage(ExpandConstant('{cm:UpgradeNoVersion}'), [UserDataDir]);
 
-  UpgradePage := CreateOutputMsgPage(wpWelcome,
+  UpgradePage := CreateInputOptionPage(wpWelcome,
     ExpandConstant('{cm:UpgradeTitle}'),
-    ExpandConstant('{cm:UpgradeSubtitle}'), Text);
+    ExpandConstant('{cm:UpgradeSubtitle}'), Text, False, False);
+  UpgradePage.Add(ExpandConstant('{cm:DeleteDataCheck}'));
+  UpgradePage.Values[0] := False;
 end;
 
-{ Копия главных файлов данных (закладки, настройки, история, словарь)
-  до того, как поменяется хоть один файл программы. Копируются только
-  json верхнего уровня: они маленькие и в них всё ценное, а кэш фото
-  и миниатюр восстановим. Неудача копии установку не отменяет. }
-procedure BackupUserData;
+{ Стоит ли галочка удаления. }
+function WantsDeleteData: Boolean;
+begin
+  Result := (UpgradePage <> nil) and UpgradePage.Values[0];
+end;
+
+{ Копия главных файлов данных до того, как поменяется хоть один файл.
+  Копируются json верхнего уровня и папка ручных фото: кэш фото и
+  миниатюр восстановим. Возвращает истину, только если копия точно сделана:
+  по ней решается, можно ли что-то удалять. }
+function BackupUserData: Boolean;
 var
   Code: Integer;
 begin
-  if (PreviousVersion = '') or not DirExists(UserDataDir) then
-    Exit;
+  Result := False;
 
-  if not ForceDirectories(BackupDir) then begin
-    Log('не удалось создать папку копии: ' + BackupDir);
+  if not DirExists(UserDataDir) then begin
+    Result := True;
+    Exit;
+  end;
+
+  if not ForceDirectories(BackupFolder) then begin
+    Log('не удалось создать папку копии: ' + BackupFolder);
     Exit;
   end;
 
   if not Exec(ExpandConstant('{cmd}'),
-      '/C copy /Y "' + UserDataDir + '\*.json" "' + BackupDir + '\"',
-      '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-    Log('копия данных не сделана, код ' + IntToStr(Code));
+      '/C copy /Y "' + UserDataDir + '\*.json" "' + BackupFolder + '\"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+    { Код 1 — json-файлов просто нет: тогда и терять нечего. }
+    if not FileExists(UserDataDir + '\bookmarks.json') then
+      Result := True
+    else
+      Log('копия данных не сделана, код ' + IntToStr(Code));
+    Exit;
+  end;
+
+  if DirExists(UserDataDir + '\manual-photos') then
+    Exec(ExpandConstant('{cmd}'),
+      '/C xcopy "' + UserDataDir + '\manual-photos" "' + BackupFolder + '\manual-photos\" /E /I /Y',
+      '', SW_HIDE, ewWaitUntilTerminated, Code);
+
+  Result := FileExists(BackupFolder + '\bookmarks.json') or
+            not FileExists(UserDataDir + '\bookmarks.json');
+end;
+
+{ Удаляет файлы закладок и связанные данные. Вызывается только после
+  успешной копии. }
+procedure DeleteOldData;
+var
+  List, Name: String;
+  Comma: Integer;
+begin
+  List := DeletableData + ',';
+
+  while List <> '' do begin
+    Comma := Pos(',', List);
+    Name := Copy(List, 1, Comma - 1);
+    List := Copy(List, Comma + 1, Length(List));
+
+    if (Name <> '') and FileExists(UserDataDir + '\' + Name) then
+      if DeleteFile(UserDataDir + '\' + Name) then
+        Log('удалён файл данных: ' + Name)
+      else
+        Log('не удалось удалить: ' + Name);
+  end;
 end;
 
 #ifndef BundledFfmpeg
@@ -461,12 +549,46 @@ begin
   Result := FfmpegPageHidden(PageID);
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+{ Подтверждение удаления: только если галочка стоит, и только «Да» идёт дальше.
+  Ответ по умолчанию — «Нет». }
+function NextButtonClick(CurPageID: Integer): Boolean;
 begin
-  if CurStep = ssInstall then
-    BackupUserData;
+  Result := True;
+
+  if (UpgradePage <> nil) and (CurPageID = UpgradePage.ID) and WantsDeleteData then
+    if SuppressibleMsgBox(FmtMessage(ExpandConstant('{cm:DeleteDataConfirm}'), [BackupFolder]),
+        mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) <> IDYES then begin
+      UpgradePage.Values[0] := False;
+      Result := False;
+    end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  BackedUp: Boolean;
+begin
+  if CurStep = ssInstall then begin
+    BackedUp := BackupUserData;
+
+    if WantsDeleteData then begin
+      { Без точной копии ничего не удаляем. }
+      if BackedUp then
+        DeleteOldData
+      else
+        SuppressibleMsgBox(ExpandConstant('{cm:DeleteDataNoBackup}'), mbError, MB_OK, IDOK);
+    end;
+  end;
 #ifndef BundledFfmpeg
   if CurStep = ssPostInstall then
     PlaceFfmpeg;
 #endif
+end;
+
+{ Удаление программы: данные остаются, если не ответить «Да» явно.
+  Тихое удаление ничего не трогает. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
+    if MsgBox(ExpandConstant('{cm:UninstallAskData}'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      DelTree(ExpandConstant('{userappdata}\PithPlayer'), True, True, True);
 end;
