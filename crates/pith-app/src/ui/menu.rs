@@ -164,8 +164,8 @@ fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
     if ui
         .button(tr!("Интеграции…", "Integrations…"))
         .on_hover_text(tr!(
-            "Доступ к Notion и ключ базы фильмов",
-            "Notion access and the movie database key"
+            "Токен GitHub, ключи базы фильмов и DeepL",
+            "GitHub token, movie database and DeepL keys"
         ))
         .clicked()
     {

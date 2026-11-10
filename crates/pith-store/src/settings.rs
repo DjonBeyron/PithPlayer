@@ -6,7 +6,6 @@ use crate::cev::CevSettings;
 use crate::file::{read_json, write_json};
 use crate::hotkeys::Hotkeys;
 use crate::language::Language;
-use crate::notion::NotionSettings;
 use crate::paths::DataPaths;
 use crate::subtitle_layout::SubtitleLayout;
 use crate::subtitle_priority::SubtitlePriority;
@@ -203,12 +202,6 @@ pub struct Settings {
     /// До какого момента (секунды Unix) не напоминать об обновлении.
     pub update_remind_after: u64,
 
-    /// Доступ к Notion: токен интеграции и страницы.
-    ///
-    /// Пусто — выгрузка не подключена, и кнопка отрезков открывает окно
-    /// интеграций вместо выгрузки.
-    pub notion: NotionSettings,
-
     /// Выгрузка в базу CodeEditVideo (GitHub) вместо Notion.
     pub cev: CevSettings,
 }
@@ -246,7 +239,6 @@ impl Default for Settings {
             update_check: true,
             update_remind_after: 0,
             cev: CevSettings::default(),
-            notion: NotionSettings::default(),
         }
     }
 }

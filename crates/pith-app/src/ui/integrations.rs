@@ -1,4 +1,4 @@
-//! Окно интеграций: доступ к Notion и ключ базы фильмов.
+//! Окно интеграций: токен GitHub, ключ базы фильмов и DeepL.
 //!
 //! Отдельное окно, как у актёров: настройки вводят один раз, и закрывать
 //! ими кадр незачем. Состояние и запросы — в `app/integrations.rs`.
@@ -19,9 +19,6 @@ const PADDING: i8 = 14;
 
 /// Где взять ключ доступа к базе фильмов.
 const TMDB_KEY_URL: &str = "https://www.themoviedb.org/settings/api";
-
-/// Где заводится интеграция Notion.
-const NOTION_URL: &str = "https://www.notion.so/my-integrations";
 
 /// Сколько высоты оставить строке кнопок.
 ///
@@ -69,7 +66,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
     });
 
     match action {
-        Some(Action::Check) => app.check_notion_access(ctx),
+        Some(Action::Check) => app.check_cev_access(ctx),
         Some(Action::CheckDeepl) => app.check_deepl(ctx),
         Some(Action::Save) => app.save_integrations(),
         Some(Action::Close) => app.close_integrations(),
@@ -87,14 +84,10 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
         .max_height((ui.available_height() - BUTTONS_HEIGHT).max(0.0))
         .show(ui, |ui| {
             let state = app.integrations_state();
-            super::integrations_cev::show_target(state, ui);
-            ui.add_space(12.0);
 
-            action = if state.cev.enabled {
-                super::integrations_cev::show_cev(state, ui).then_some(Action::Check)
-            } else {
-                show_notion(state, ui)
-            };
+            if super::integrations_cev::show_cev(state, ui) {
+                action = Some(Action::Check);
+            }
 
             ui.add_space(16.0);
             show_tmdb(state, ui);
@@ -109,99 +102,6 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
     }
 
     action
-}
-
-/// Всё про Notion: токен, страница базы и проверка доступа.
-///
-/// База одна на все картины, и настраивать в обычной жизни нечего:
-/// на виду токен и страница с базой, образец убран вниз — его задают
-/// один раз и больше не трогают.
-fn show_notion(state: &mut IntegrationsState, ui: &mut egui::Ui) -> Option<Action> {
-    show_section(ui, "Notion");
-    // Без стрелок в подсказке: в шрифтах egui их нет, и на месте знака
-    // выходит пустой квадрат (та же беда, что в окне актёров).
-    show_hint(
-        ui,
-        tr!(
-            "Страница должна быть открыта интеграции: в самой странице «…», \
-             затем «Соединения» и ваша интеграция.",
-            "The page must be shared with the integration: on the page \
-             itself «…», then «Connections» and your integration."
-        ),
-    );
-    ui.hyperlink_to(egui::RichText::new(NOTION_URL).size(11.0), NOTION_URL);
-
-    ui.add_space(10.0);
-
-    show_field(
-        ui,
-        tr!("Токен интеграции", "Integration token"),
-        "ntn_…",
-        &mut state.notion.token,
-        true,
-    );
-    show_field(
-        ui,
-        tr!("Страница с базой отрезков", "Fragments database page"),
-        tr!("Ссылка на страницу", "Link to the page"),
-        &mut state.notion.work_page,
-        false,
-    );
-
-    show_template_field(state, ui);
-
-    ui.add_space(6.0);
-
-    let working = state.status == AccessStatus::Working;
-    let ready = state.notion.is_ready();
-
-    let clicked = ui
-        .add_enabled(
-            !working && ready,
-            egui::Button::new(tr!("Проверить доступ", "Check access")),
-        )
-        .on_disabled_hover_text(tr!("Заполните поля выше", "Fill in the fields above"))
-        .clicked();
-
-    show_status(&state.status, ui);
-
-    clicked.then_some(Action::Check)
-}
-
-/// Страница-образец — в раскрывающемся разделе.
-///
-/// Из неё берутся значения строки-образца: `STATUS` и разделитель.
-/// Меняют её раз в жизни, а место в окне она занимала наравне с нужным.
-fn show_template_field(state: &mut IntegrationsState, ui: &mut egui::Ui) {
-    egui::CollapsingHeader::new(
-        egui::RichText::new(tr!("Образец строки", "Row template"))
-            .color(theme::PANEL_MUTED)
-            .size(12.0),
-    )
-    .id_salt("notion_template")
-    .show(ui, |ui| {
-        show_hint(
-            ui,
-            tr!(
-                "Страница DIFF: из её единственной строки берутся значения \
-                 для новых — STATUS и разделитель. Плеер её только читает.",
-                "The DIFF page: values for new rows — STATUS and the \
-                 separator — are taken from its only row. Read only."
-            ),
-        );
-        ui.add_space(6.0);
-
-        show_field(
-            ui,
-            tr!("Страница-образец", "Template page"),
-            tr!(
-                "Ссылка на страницу с базой",
-                "Link to the page with the database"
-            ),
-            &mut state.notion.template_page,
-            false,
-        );
-    });
 }
 
 /// Ключ базы фильмов — тот же, что просит окно актёров.
@@ -264,16 +164,8 @@ pub(super) fn show_status(status: &AccessStatus, ui: &mut egui::Ui) {
     let (text, color) = match status {
         AccessStatus::Idle => return,
         AccessStatus::Working => (
-            tr!("Спрашиваю Notion…", "Asking Notion…").to_string(),
+            tr!("Спрашиваю GitHub…", "Asking GitHub…").to_string(),
             theme::PANEL_MUTED,
-        ),
-        AccessStatus::Ok => (
-            tr!(
-                "Обе страницы видны, базы найдены",
-                "Both pages are visible, both databases are found"
-            )
-            .to_string(),
-            theme::PANEL_ACCENT,
         ),
         AccessStatus::Verified(info) => (info.clone(), theme::PANEL_ACCENT),
         AccessStatus::Failed(why) => (why.clone(), theme::ERROR),

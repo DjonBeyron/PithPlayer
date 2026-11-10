@@ -11,6 +11,7 @@
 
 mod net;
 mod record;
+mod types;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -18,6 +19,7 @@ use serde_json::{Value, json};
 
 pub use net::use_proxy;
 pub use record::{Entry, Report, append, duplicate_indexes};
+pub use types::{Kind, Row, Sound, film_name};
 
 const OWNER: &str = "DjonBeyron";
 const REPO: &str = "codeeditvideo-projects";

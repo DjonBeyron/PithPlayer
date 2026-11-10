@@ -6,8 +6,7 @@
 
 use std::sync::mpsc::channel;
 
-use pith_cev::{Cev, Entry};
-use pith_notion::{Report, Row};
+use pith_cev::{Cev, Entry, Report, Row};
 
 use super::PithApp;
 use super::export::{ExportEvent, ExportStage};
@@ -37,22 +36,14 @@ impl PithApp {
         }
     }
 
-    /// Подключено ли то место, куда сейчас идёт выгрузка.
+    /// Задан ли токен GitHub — без него выгружать некуда.
     pub(super) fn export_target_ready(&self) -> bool {
-        if self.settings.cev.enabled {
-            self.settings.cev.is_ready()
-        } else {
-            self.settings.notion.is_ready()
-        }
+        self.settings.cev.is_ready()
     }
 
-    /// Фраза «сначала подключите…» для текущего места выгрузки.
+    /// Фраза «сначала укажите токен».
     pub(super) fn export_target_missing(&self) -> &'static str {
-        if self.settings.cev.enabled {
-            crate::tr!("Сначала укажите токен GitHub", "Set the GitHub token first")
-        } else {
-            crate::tr!("Сначала подключите Notion", "Connect Notion first")
-        }
+        crate::tr!("Сначала укажите токен GitHub", "Set the GitHub token first")
     }
 
     /// Отправляет активный список в CodeEditVideo. Сеть — в отдельном потоке.
@@ -91,7 +82,6 @@ impl PithApp {
                 total: rows.len(),
             };
             dialog.events = Some(receiver);
-            dialog.preparing = None;
         }
 
         std::thread::spawn(move || {
@@ -131,6 +121,10 @@ impl PithApp {
                     ring.request_repaint();
                 });
 
+                if result.missing > 0 {
+                    tracing::warn!(слов = result.missing, "транскрипции не нашлось");
+                }
+
                 let _ = sender.send(ExportEvent::Words(result.fresh));
             }
 
@@ -145,18 +139,7 @@ impl PithApp {
             let entries: Vec<Entry> = rows.iter().map(entry).collect();
             let total = entries.len();
 
-            let answer = cev
-                .push(&film_name, &entries)
-                .map(|done| Report {
-                    // Пусто — окно покажет ссылку на репозиторий, а не Notion.
-                    database_id: String::new(),
-                    created: done.created,
-                    without_actor: done.without_actor,
-                    failed: Vec::new(),
-                    sample_taken: true,
-                    first_number: done.first_number,
-                })
-                .map_err(|e| e.to_string());
+            let answer = cev.push(&film_name, &entries).map_err(|e| e.to_string());
 
             let _ = sender.send(ExportEvent::Step { done: total, total });
             let _ = sender.send(ExportEvent::Log(summary(&answer)));
@@ -204,12 +187,9 @@ fn check_duplicates(
 /// Отчёт, когда после пропуска повторов выгружать нечего.
 fn empty_report() -> Report {
     Report {
-        database_id: String::new(),
         created: 0,
-        without_actor: 0,
-        failed: Vec::new(),
-        sample_taken: true,
         first_number: 0,
+        without_actor: 0,
     }
 }
 

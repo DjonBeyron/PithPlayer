@@ -1,4 +1,4 @@
-//! Выгрузка в CodeEditVideo: выбор места и токен GitHub.
+//! Выгрузка в CodeEditVideo: токен GitHub и проверка доступа.
 //!
 //! Кусок окна интеграций (`ui/integrations.rs`): отдельным файлом, чтобы
 //! тот не разрастался.
@@ -14,16 +14,6 @@ const TOKENS_URL: &str = "https://github.com/settings/personal-access-tokens";
 
 /// Где создаётся токен GitHub.
 const TOKEN_URL: &str = "https://github.com/settings/personal-access-tokens/new";
-
-/// Переключатель «Notion / CodeEditVideo».
-pub(super) fn show_target(state: &mut IntegrationsState, ui: &mut egui::Ui) {
-    show_section(ui, tr!("Куда выгружать отрезки", "Where to export"));
-
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut state.cev.enabled, false, "Notion");
-        ui.selectable_value(&mut state.cev.enabled, true, "CodeEditVideo");
-    });
-}
 
 /// Токен GitHub и проверка доступа. Возвращает `true`, если нажали проверку.
 pub(super) fn show_cev(state: &mut IntegrationsState, ui: &mut egui::Ui) -> bool {

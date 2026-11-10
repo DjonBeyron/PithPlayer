@@ -91,8 +91,8 @@ fn show_hidden_export(ui: &mut egui::Ui, done: usize, total: usize, sounding: bo
         )
     } else {
         tr!(
-            format!("Выгрузка в Notion: {done} из {total}"),
-            format!("Export to Notion: {done} of {total}")
+            format!("Выгрузка в базу: {done} из {total}"),
+            format!("Export to the database: {done} of {total}")
         )
     };
 
@@ -150,8 +150,8 @@ fn show_main_row(
         // интеграций, и станет видно, чего не хватает.
         actions.export |= icon_button(ui, icons::UPLOAD, theme::TEXT_PRIMARY)
             .on_hover_text(tr!(
-                format!("Выгрузить в Notion ({active_count})"),
-                format!("Export to Notion ({active_count})")
+                format!("Выгрузить в базу ({active_count})"),
+                format!("Export to the database ({active_count})")
             ))
             .clicked();
 

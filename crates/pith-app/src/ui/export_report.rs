@@ -1,16 +1,12 @@
 //! Отчёт и отказ окна выгрузки.
 //!
 //! Отдельно от самого окна: у отчёта своя разметка и свои оговорки —
-//! номера созданных строк, слова без транскрипции, строки, которых Notion
-//! не принял. Окно и вопрос — в `ui/export.rs` и `ui/export_form.rs`.
+//! номера созданных записей и записи без актёра. Окно и вопрос — в `ui/export.rs` и `ui/export_form.rs`.
 
-use pith_notion::Report;
+use pith_cev::Report;
 
 use crate::theme;
 use crate::tr;
-
-/// Адрес созданной базы — по нему её открывают в браузере.
-const NOTION_PAGE: &str = "https://www.notion.so/";
 
 /// Файл базы CodeEditVideo на GitHub.
 const CEV_PAGE: &str =
@@ -55,76 +51,15 @@ pub(super) fn show_report(ui: &mut egui::Ui, report: &Report) -> bool {
         );
     }
 
-    // Строка начинается со значений образца — `STATUS` в том числе,
-    // а на него смотрит синхронизатор. Не прочиталось — строки на месте,
-    // но эти поля у них пусты.
-    if !report.sample_taken {
-        ui.add_space(4.0);
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new(tr!(
-                    "Заготовку строки взять у образца не удалось — STATUS пуст",
-                    "The row sample could not be read from the template — STATUS is empty"
-                ))
-                .color(theme::ERROR)
-                .size(12.0),
-            )
-            .wrap(),
-        );
-    }
-
-    show_failures(ui, report);
-
     ui.add_space(10.0);
-    // Пустой номер базы — выгрузка шла в CodeEditVideo, а не в Notion.
-    if report.database_id.is_empty() {
-        ui.hyperlink_to(
-            egui::RichText::new(tr!("Открыть базу на GitHub", "Open the database on GitHub"))
-                .size(12.0),
-            CEV_PAGE,
-        );
-    } else {
-        let url = format!("{NOTION_PAGE}{}", report.database_id.replace('-', ""));
-        ui.hyperlink_to(
-            egui::RichText::new(tr!("Открыть в Notion", "Open in Notion")).size(12.0),
-            url,
-        );
-    }
+    ui.hyperlink_to(
+        egui::RichText::new(tr!("Открыть базу на GitHub", "Open the database on GitHub"))
+            .size(12.0),
+        CEV_PAGE,
+    );
 
     ui.add_space(12.0);
     ui.button(tr!("Закрыть", "Close")).clicked()
-}
-
-/// Строки, которые Notion не принял, — с причинами.
-fn show_failures(ui: &mut egui::Ui, report: &Report) {
-    if report.failed.is_empty() {
-        return;
-    }
-
-    ui.add_space(8.0);
-    ui.label(
-        egui::RichText::new(tr!(
-            format!("Не принято: {}", report.failed.len()),
-            format!("Rejected: {}", report.failed.len())
-        ))
-        .color(theme::ERROR)
-        .size(13.0),
-    );
-
-    egui::ScrollArea::vertical()
-        .max_height(120.0)
-        .show(ui, |ui| {
-            for (number, why) in &report.failed {
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(format!("{number}: {why}"))
-                            .color(theme::TEXT_SECONDARY)
-                            .size(11.0),
-                    )
-                    .wrap(),
-                );
-            }
-        });
 }
 
 /// Отказ до первой строки: обычно нет доступа или образец не тот.

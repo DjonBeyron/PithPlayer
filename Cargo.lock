@@ -2125,7 +2125,6 @@ dependencies = [
  "pith-dict",
  "pith-fragments",
  "pith-mpv",
- "pith-notion",
  "pith-store",
  "pith-subs",
  "pith-tmdb",
@@ -2189,17 +2188,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tracing",
-]
-
-[[package]]
-name = "pith-notion"
-version = "5.1.62"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "tracing",
- "ureq",
 ]
 
 [[package]]

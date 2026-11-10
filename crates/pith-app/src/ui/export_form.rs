@@ -30,35 +30,9 @@ pub fn show(app: &mut PithApp, ui: &mut egui::Ui) -> Option<FormAction> {
     ui.add_space(10.0);
     show_after_card(app, ui);
 
-    show_prepare_failure(app, ui);
-
     ui.add_space(14.0);
 
     show_buttons(ui)
-}
-
-/// Отказ подготовки — виден до нажатия «Выгрузить».
-///
-/// Плеер спрашивает Notion, ещё пока открыт вопрос, и об отсутствии доступа
-/// узнаёт заранее. Показать это сразу честнее, чем дать нажать и ответить
-/// отказом.
-fn show_prepare_failure(app: &PithApp, ui: &mut egui::Ui) {
-    let Some(why) = app.export_dialog().and_then(|d| d.prepare_failed.clone()) else {
-        return;
-    };
-
-    ui.add_space(10.0);
-    ui.add(
-        egui::Label::new(
-            egui::RichText::new(tr!(
-                format!("Notion не отвечает: {why}"),
-                format!("Notion is not responding: {why}")
-            ))
-            .color(crate::theme::ERROR)
-            .size(12.0),
-        )
-        .wrap(),
-    );
 }
 
 /// Карточка названия: откуда взять, на каком языке и что вышло.
@@ -164,8 +138,8 @@ fn show_kind_card(app: &mut PithApp, ui: &mut egui::Ui) {
         let chosen = dialog::segmented(
             ui,
             &[
-                (tr!("Сериал", "Series"), kind == pith_notion::Kind::Series),
-                (tr!("Фильм", "Movie"), kind == pith_notion::Kind::Movie),
+                (tr!("Сериал", "Series"), kind == pith_cev::Kind::Series),
+                (tr!("Фильм", "Movie"), kind == pith_cev::Kind::Movie),
             ],
         );
 
@@ -176,8 +150,8 @@ fn show_kind_card(app: &mut PithApp, ui: &mut egui::Ui) {
         dialog::hint(
             ui,
             &tr!(
-                format!("В Notion попадёт: {film_name}"),
-                format!("Notion will get: {film_name}")
+                format!("В базу попадёт: {film_name}"),
+                format!("The database will get: {film_name}")
             ),
         );
 
@@ -185,9 +159,9 @@ fn show_kind_card(app: &mut PithApp, ui: &mut egui::Ui) {
             && let Some(state) = app.export_dialog_mut()
         {
             state.kind = if index == 0 {
-                pith_notion::Kind::Series
+                pith_cev::Kind::Series
             } else {
-                pith_notion::Kind::Movie
+                pith_cev::Kind::Movie
             };
         }
     });
@@ -234,8 +208,8 @@ fn show_after_card(app: &mut PithApp, ui: &mut egui::Ui) {
                 &mut state.cut_after,
                 tr!("Сразу вырезать отрезки", "Cut the fragments right away"),
                 tr!(
-                    "Нарезка начнётся сама, как только строки лягут в Notion.",
-                    "Cutting starts as soon as the rows land in Notion."
+                    "Нарезка начнётся сама, как только записи лягут в базу.",
+                    "Cutting starts as soon as the records land in the database."
                 ),
             );
         });

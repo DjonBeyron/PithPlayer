@@ -7,7 +7,7 @@
 
 use std::sync::mpsc::Receiver;
 
-use pith_notion::{Kind, Prepared, Report};
+use pith_cev::{Kind, Report};
 
 pub(super) use super::export_event::ExportEvent;
 use super::export_log::{LogKind, LogLine};
@@ -70,20 +70,6 @@ pub struct ExportDialog {
     from_cast: String,
     /// Место окну уже назначено — второй раз не навязываем.
     pub(super) placed: bool,
-    /// Ответы Notion, добытые заранее: с ними выгрузка идёт сразу к строкам.
-    pub(super) prepared: Option<Prepared>,
-    /// Подготовка ещё идёт.
-    pub(super) preparing: Option<Receiver<Result<Prepared, String>>>,
-    /// Подготовка не удалась — причина словами.
-    ///
-    /// Видна в окне сразу, не дожидаясь нажатия: обычно это отсутствие
-    /// доступа к странице, и узнать об этом лучше до, а не после.
-    pub prepare_failed: Option<String>,
-    /// Подготовку ещё не начинали.
-    ///
-    /// Начинается на первом кадре окна: там есть `Context`, без которого
-    /// рабочий поток не сможет разбудить интерфейс готовым ответом.
-    pub(super) prefetch_pending: bool,
     /// Журнал: что происходило и откуда бралось каждое значение.
     ///
     /// Виден в самом окне, а не только в файле журнала плеера: понять,
@@ -102,7 +88,7 @@ pub struct ExportDialog {
 impl ExportDialog {
     /// Название, которое уйдёт в Notion, — уже с видом картины.
     pub fn film_name(&self) -> String {
-        pith_notion::film_name(self.kind, self.chosen_title())
+        pith_cev::film_name(self.kind, self.chosen_title())
     }
 
     /// Что стоит в поле названия сейчас.
@@ -208,10 +194,6 @@ impl PithApp {
             from_file,
             from_cast,
             placed: false,
-            prepared: None,
-            preparing: None,
-            prepare_failed: None,
-            prefetch_pending: true,
             log: Vec::new(),
             visible: true,
             events: None,

@@ -10,17 +10,15 @@ use crate::paths::DataPaths;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CevSettings {
-    /// Выгружать в CodeEditVideo вместо Notion.
-    pub enabled: bool,
     /// Токен GitHub с правом записи в репозиторий проектов
     /// (fine-grained: Contents — Read and write).
     pub token: String,
 }
 
 impl CevSettings {
-    /// Хватает ли настроек для выгрузки: включено и токен задан.
+    /// Хватает ли настроек для выгрузки: токен задан.
     pub fn is_ready(&self) -> bool {
-        self.enabled && !self.token.trim().is_empty()
+        !self.token.trim().is_empty()
     }
 }
 
@@ -95,7 +93,6 @@ mod restore_tests {
         let paths = DataPaths::with_root(dir.path());
 
         CevSettings {
-            enabled: true,
             token: "ghp_a".into(),
         }
         .persist(&paths);
@@ -104,7 +101,6 @@ mod restore_tests {
         now.restore(&paths);
 
         assert_eq!(now.token, "ghp_a");
-        assert!(now.enabled);
     }
 
     #[test]
@@ -116,7 +112,7 @@ mod restore_tests {
         std::fs::create_dir_all(&backup).expect("папка копии");
         std::fs::write(
             backup.join("settings.json"),
-            r#"{"language":"ru","cev":{"enabled":true,"token":"ghp_b"}}"#,
+            r#"{"language":"ru","cev":{"token":"ghp_b"}}"#,
         )
         .expect("копия");
 
@@ -135,13 +131,11 @@ mod restore_tests {
         let dir = tempfile::tempdir().expect("каталог");
         let paths = DataPaths::with_root(dir.path());
         CevSettings {
-            enabled: true,
             token: "old".into(),
         }
         .persist(&paths);
 
         let mut now = CevSettings {
-            enabled: true,
             token: "new".into(),
         };
         now.restore(&paths);
@@ -155,17 +149,11 @@ mod tests {
     use super::CevSettings;
 
     #[test]
-    fn готово_только_включённое_и_с_токеном() {
+    fn готово_только_с_токеном() {
         let mut cev = CevSettings::default();
-        assert!(!cev.is_ready());
-
-        cev.enabled = true;
         assert!(!cev.is_ready(), "без токена писать некуда");
 
         cev.token = " ghp_x ".into();
         assert!(cev.is_ready());
-
-        cev.enabled = false;
-        assert!(!cev.is_ready());
     }
 }

@@ -1,6 +1,6 @@
 //! Окно выгрузки отрезков в Notion: вопрос, ход работы и отчёт.
 
-use pith_notion::Report;
+use pith_cev::Report;
 
 use crate::ui::export_report;
 
@@ -43,11 +43,7 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
     let viewport = app.place_export_window(
         egui::ViewportBuilder::default()
-            .with_title(if app.settings().cev.enabled {
-                tr!("Выгрузка в CodeEditVideo", "Export to CodeEditVideo")
-            } else {
-                tr!("Выгрузка в Notion", "Export to Notion")
-            })
+            .with_title(tr!("Выгрузка в CodeEditVideo", "Export to CodeEditVideo"))
             .with_min_inner_size(MIN_SIZE),
         DEFAULT_SIZE,
     );
@@ -57,11 +53,6 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
     ctx.show_viewport_immediate(id, viewport, |ctx, _class| {
         app.track_export_window(ctx);
-
-        // Пока человек отвечает на вопрос, плеер уже спрашивает Notion:
-        // три запроса подготовки — это около трёх секунд, и ждать их после
-        // нажатия «Выгрузить» незачем.
-        app.prefetch_export(ctx);
 
         egui::CentralPanel::default()
             .frame(
@@ -173,9 +164,7 @@ fn show_body(app: &mut PithApp, ui: &mut egui::Ui) -> Option<Action> {
 
             // Отказ GitHub — самый частый случай: токен пропал, истёк
             // или без права записи. Подсказываем, где его взять.
-            if app.settings().cev.enabled {
-                super::integrations_cev::show_token_help(ui);
-            }
+            super::integrations_cev::show_token_help(ui);
 
             closed.then_some(Action::Close)
         }
@@ -369,8 +358,8 @@ fn show_progress(ui: &mut egui::Ui, done: usize, total: usize) {
     ui.add_space(6.0);
     ui.label(
         egui::RichText::new(tr!(
-            "Строка за строкой — Notion принимает их по одной.",
-            "Row by row — Notion takes them one at a time."
+            "Все записи одним коммитом в базу GitHub.",
+            "All records in one commit to the GitHub database."
         ))
         .color(theme::TEXT_DISABLED)
         .size(12.0),

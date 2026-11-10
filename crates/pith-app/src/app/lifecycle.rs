@@ -201,7 +201,6 @@ impl PithApp {
         self.poll_cast();
         self.poll_integrations();
         self.poll_warmup();
-        self.poll_export_prepare();
         self.poll_export();
         self.poll_subtitle_extraction();
         self.poll_extraction();

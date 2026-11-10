@@ -14,8 +14,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use pith_cev::{Row, Sound};
 use pith_dict::{Dict, Source};
-use pith_notion::{Row, Sound};
 use pith_store::Sound as StoredSound;
 
 use super::export_log::{LogKind, LogLine};
@@ -224,7 +224,7 @@ fn sounds_of(text: &str, found: &BTreeMap<String, StoredSound>) -> Vec<Sound> {
 #[cfg(test)]
 mod tests {
     use super::{sounds_of, unique_words};
-    use pith_notion::Row;
+    use pith_cev::Row;
     use pith_store::Sound as StoredSound;
     use std::collections::BTreeMap;
 

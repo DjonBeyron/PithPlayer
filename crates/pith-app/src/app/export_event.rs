@@ -1,6 +1,6 @@
 //! Вести от рабочего потока выгрузки к окну.
 
-use pith_notion::Report;
+use pith_cev::Report;
 use pith_store::Sound as StoredSound;
 
 use super::export_log::LogLine;

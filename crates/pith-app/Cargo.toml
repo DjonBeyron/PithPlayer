@@ -13,7 +13,6 @@ path = "src/main.rs"
 pith-mpv = { path = "../pith-mpv" }
 pith-store = { path = "../pith-store" }
 pith-tmdb = { path = "../pith-tmdb" }
-pith-notion = { path = "../pith-notion" }
 pith-dict = { path = "../pith-dict" }
 pith-update = { path = "../pith-update" }
 pith-cev = { path = "../pith-cev" }
@@ -26,8 +25,6 @@ glow.workspace = true
 anyhow.workspace = true
 # Разбор словаря транскрипций, вложенного в поставку (app/dictionary.rs).
 serde = { workspace = true, features = ["derive"] }
-# Настройки чужого синхронизатора Notion — из них берутся токен
-# и страница карточек по умолчанию (app/integrations.rs).
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

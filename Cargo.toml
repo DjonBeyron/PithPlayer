@@ -6,7 +6,6 @@ members = [
     "crates/pith-subs",
     "crates/pith-fragments",
     "crates/pith-tmdb",
-    "crates/pith-notion",
     "crates/pith-dict",
     "crates/pith-update",
     "crates/pith-cev",
