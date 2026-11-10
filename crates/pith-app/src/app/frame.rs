@@ -61,6 +61,7 @@ impl eframe::App for PithApp {
         self.check_update_quietly(ui.ctx());
         self.poll_update(ui.ctx());
         self.poll_deepl();
+        self.process_removals(ui.ctx());
         self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
         self.announce_maximized(frame);

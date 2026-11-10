@@ -22,13 +22,14 @@ pub(super) fn show(
     bookmark: &pith_store::TimeBookmark,
     others: &[String],
     can_extract: bool,
+    removal_left: Option<f64>,
     actions: &mut PanelActions,
 ) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            show_row_buttons(ui, bookmark, can_extract, actions);
+            show_row_buttons(ui, bookmark, can_extract, removal_left, actions);
 
             // Остаток строки — под время и название.
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -43,13 +44,34 @@ fn show_row_buttons(
     ui: &mut egui::Ui,
     bookmark: &pith_store::TimeBookmark,
     can_extract: bool,
+    removal_left: Option<f64>,
     actions: &mut PanelActions,
 ) {
-    if ui
-        .add(egui::Button::new(icons::DELETE.text()).frame(false))
-        .on_hover_text(tr!("Убрать", "Remove"))
-        .clicked()
-    {
+    // Пока идёт таймер, вместо корзины — оставшиеся секунды красным;
+    // нажатие отменяет удаление.
+    let delete = match removal_left {
+        Some(left) => egui::Button::new(
+            egui::RichText::new(format!("{}", left.ceil() as i64))
+                .color(theme::ERROR)
+                .strong(),
+        ),
+        None => egui::Button::new(icons::DELETE.text()),
+    }
+    .frame(false);
+
+    let hint = match removal_left {
+        Some(left) => tr!(
+            format!(
+                "Удалится через {} с — нажмите, чтобы отменить",
+                left.ceil() as i64
+            ),
+            format!("Removed in {} s — click to cancel", left.ceil() as i64)
+        )
+        .to_string(),
+        None => tr!("Убрать (через 5 секунд)", "Remove (in 5 seconds)").to_string(),
+    };
+
+    if ui.add(delete).on_hover_text(hint).clicked() {
         actions.remove = Some(bookmark.time_ms);
     }
 
@@ -144,6 +166,11 @@ fn show_row_text(
 
     if row.clicked() {
         actions.jump_to = Some(bookmark.seconds());
+    }
+
+    // Двойной щелчок по тексту — окно названия и актёра, как карандаш.
+    if row.double_clicked() {
+        actions.rename = Some(bookmark.time_ms);
     }
 
     row.context_menu(|ui| {

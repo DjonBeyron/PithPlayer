@@ -152,23 +152,6 @@ impl PithApp {
         }
     }
 
-    /// Удаляет закладку по точному времени.
-    pub fn remove_bookmark_at(&mut self, time_ms: i64) {
-        let Some(key) = self.video_key() else {
-            return;
-        };
-
-        let duration = self.settings.fragments.duration_sec;
-        let buffer = self.settings.fragments.buffer_sec;
-
-        let video = self.bookmarks.for_video_mut(&key, duration, buffer);
-        if let Some(list) = video.active_mut()
-            && list.remove_at(time_ms)
-        {
-            self.bookmarks.save();
-        }
-    }
-
     /// Отрезки всех списков — те самые цветные области на полосе.
     ///
     /// Каждому списку — свой цвет, чтобы было видно принадлежность метки

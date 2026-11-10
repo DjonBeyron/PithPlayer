@@ -6,6 +6,7 @@
 mod actor_rename;
 mod actors;
 mod audio;
+mod bookmark_removal;
 mod bookmark_rename;
 mod bookmarks;
 mod bookmarks_panel;
@@ -223,6 +224,10 @@ pub struct PithApp {
     list_dialog: Option<ListDialog>,
     /// Открытое переименование закладки.
     bookmark_rename: Option<BookmarkRename>,
+    /// Окну переименования уже назначено место.
+    rename_placed: bool,
+    /// Закладки, ожидающие удаления по таймеру.
+    pending_removals: Vec<bookmark_removal::PendingRemoval>,
     /// Ждёт подтверждения очистка списка закладок.
     clear_list_pending: bool,
     /// Открытый диалог общих настроек нарезки.

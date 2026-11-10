@@ -202,8 +202,14 @@ pub struct Settings {
     /// До какого момента (секунды Unix) не напоминать об обновлении.
     pub update_remind_after: u64,
 
-    /// Выгрузка в базу CodeEditVideo (GitHub) вместо Notion.
+    /// Выгрузка в базу CodeEditVideo (GitHub).
     pub cev: CevSettings,
+
+    /// Где стоит окно переименования закладки (в том числе на втором экране).
+    pub rename_window: Option<WindowGeometry>,
+
+    /// Подставлять текст из буфера обмена в пустое название при переименовании.
+    pub rename_autopaste: bool,
 }
 
 impl Default for Settings {
@@ -239,6 +245,8 @@ impl Default for Settings {
             update_check: true,
             update_remind_after: 0,
             cev: CevSettings::default(),
+            rename_window: None,
+            rename_autopaste: true,
         }
     }
 }

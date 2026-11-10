@@ -266,7 +266,14 @@ fn show_list(app: &PithApp, ui: &mut egui::Ui, height: f32, actions: &mut PanelA
         .max_height(height)
         .show(ui, |ui| {
             for bookmark in &list.bookmarks {
-                bookmarks_row::show(ui, bookmark, &others, can_extract, actions);
+                bookmarks_row::show(
+                    ui,
+                    bookmark,
+                    &others,
+                    can_extract,
+                    app.removal_left(bookmark.time_ms),
+                    actions,
+                );
             }
         });
 }
@@ -281,7 +288,7 @@ fn apply(app: &mut PithApp, actions: PanelActions) {
         app.seek_absolute(time);
     }
     if let Some(time_ms) = actions.remove {
-        app.remove_bookmark_at(time_ms);
+        app.toggle_removal(time_ms);
     }
     if let Some((time_ms, target)) = actions.move_to {
         app.move_bookmark_to_list(time_ms, &target);

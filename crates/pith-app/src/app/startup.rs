@@ -129,6 +129,8 @@ impl PithApp {
             bookmarks_window_placed: false,
             list_dialog: None,
             bookmark_rename: None,
+            rename_placed: false,
+            pending_removals: Vec::new(),
             clear_list_pending: false,
             fragment_settings: None,
             file_types_prompt: None,
