@@ -102,6 +102,23 @@ impl PithApp {
     /// Скачанное будит интерфейс: без этого картинка появлялась бы только
     /// при следующей отрисовке, то есть после движения мышью.
     fn start_loading(&mut self, ctx: &egui::Context, key: &str, path: &str, size: PhotoSize) {
+        // Фотография, вписанная руками, лежит на диске: сеть и кэш не нужны.
+        if let Some(local) = path.strip_prefix(pith_store::LOCAL_PHOTO) {
+            let file = PathBuf::from(local);
+            let (sender, receiver) = channel();
+
+            self.photos
+                .photos
+                .insert(key.to_string(), Photo::Loading(receiver));
+
+            let ctx = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send(std::fs::read(file).ok());
+                ctx.request_repaint();
+            });
+            return;
+        }
+
         let Some(url) = photo_url(path, size) else {
             self.photos.photos.insert(key.to_string(), Photo::Failed);
             return;

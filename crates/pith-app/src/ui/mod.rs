@@ -6,6 +6,7 @@
 mod actor_photo;
 mod actor_rename;
 mod actors;
+mod actors_manual;
 mod bookmark_rename;
 pub(crate) mod bookmarks;
 mod bookmarks_actions;

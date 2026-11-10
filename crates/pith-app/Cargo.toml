@@ -33,7 +33,8 @@ rfd = "0.15"
 arboard = "3"
 # Разбор .ico в пиксели: eframe принимает иконку окна только так.
 # JPEG — мозаика миниатюр и кадры предпросмотра приходят в нём.
-image = { version = "0.25", default-features = false, features = ["ico", "jpeg"] }
+# PNG, WebP и BMP — фотографии, вписанные руками (буфер обмена или файл).
+image = { version = "0.25", default-features = false, features = ["ico", "jpeg", "png", "webp", "bmp"] }
 # Файловые ассоциации в HKCU: делаются по явному действию пользователя.
 winreg = "0.52"
 

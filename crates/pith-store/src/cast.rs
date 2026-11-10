@@ -47,12 +47,18 @@ pub struct VideoCast {
     /// Год выпуска, если база его знает.
     pub year: Option<u32>,
     pub members: Vec<CastMember>,
+    /// Состав создан или правится вручную, без базы фильмов.
+    #[serde(default)]
+    pub manual: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CastFile {
     version: u32,
     videos: Vec<VideoCast>,
+    /// Окно актёров открывается в ручном режиме (без базы фильмов).
+    #[serde(default)]
+    manual_mode: bool,
 }
 
 impl Default for CastFile {
@@ -60,9 +66,13 @@ impl Default for CastFile {
         Self {
             version: FORMAT_VERSION,
             videos: Vec::new(),
+            manual_mode: false,
         }
     }
 }
+
+/// Приставка пути фотографии, лежащей на диске, а не в базе фильмов.
+pub const LOCAL_PHOTO: &str = "file:";
 
 /// Хранилище составов.
 pub struct CastStore {
@@ -93,12 +103,123 @@ impl CastStore {
     }
 
     /// Записывает состав, заменяя прежний.
-    pub fn replace(&mut self, cast: VideoCast) {
+    ///
+    /// Вписанные руками люди (номер меньше нуля) переносятся в новый
+    /// состав: обновление списка из базы их не стирает.
+    pub fn replace(&mut self, mut cast: VideoCast) {
+        if let Some(old) = self.for_video(&cast.video_file_name) {
+            let kept: Vec<CastMember> = old.members.iter().filter(|m| m.id < 0).cloned().collect();
+            cast.members.extend(kept);
+        }
+
         self.data
             .videos
             .retain(|v| v.video_file_name != cast.video_file_name);
         self.data.videos.push(cast);
         self.save();
+    }
+
+    /// Открывать ли окно актёров в ручном режиме.
+    pub fn manual_mode(&self) -> bool {
+        self.data.manual_mode
+    }
+
+    pub fn set_manual_mode(&mut self, on: bool) {
+        if self.data.manual_mode != on {
+            self.data.manual_mode = on;
+            self.save();
+        }
+    }
+
+    /// Состав картины для правки руками; создаётся пустым, если его не было.
+    fn manual_cast(&mut self, video: &str) -> &mut VideoCast {
+        if self.for_video(video).is_none() {
+            self.data.videos.push(VideoCast {
+                video_file_name: video.to_string(),
+                title: String::new(),
+                year: None,
+                members: Vec::new(),
+                manual: true,
+            });
+        }
+
+        self.data
+            .videos
+            .iter_mut()
+            .find(|v| v.video_file_name == video)
+            .expect("состав только что создан")
+    }
+
+    /// Вписывает название картины руками.
+    pub fn set_title(&mut self, video: &str, title: &str) {
+        let title = title.trim();
+        let cast = self.manual_cast(video);
+
+        if cast.title != title {
+            cast.title = title.to_string();
+            self.save();
+        }
+    }
+
+    /// Добавляет человека руками. Номер — отрицательный, чтобы не пересечься
+    /// с номерами базы фильмов. Возвращает номер.
+    pub fn add_manual_member(
+        &mut self,
+        video: &str,
+        name: &str,
+        role: Option<String>,
+        photo: Option<String>,
+    ) -> i64 {
+        let cast = self.manual_cast(video);
+        let id = cast.members.iter().map(|m| m.id).min().unwrap_or(0).min(0) - 1;
+
+        cast.members.push(CastMember {
+            id,
+            name: name.trim().to_string(),
+            role: role.filter(|r| !r.trim().is_empty()),
+            photo,
+        });
+        self.save();
+
+        id
+    }
+
+    /// Меняет фотографию человека.
+    pub fn set_member_photo(&mut self, video: &str, id: i64, photo: Option<String>) -> bool {
+        let Some(member) = self
+            .data
+            .videos
+            .iter_mut()
+            .find(|v| v.video_file_name == video)
+            .and_then(|v| v.members.iter_mut().find(|m| m.id == id))
+        else {
+            return false;
+        };
+
+        member.photo = photo;
+        self.save();
+        true
+    }
+
+    /// Убирает человека из состава.
+    pub fn remove_member(&mut self, video: &str, id: i64) -> bool {
+        let Some(cast) = self
+            .data
+            .videos
+            .iter_mut()
+            .find(|v| v.video_file_name == video)
+        else {
+            return false;
+        };
+
+        let before = cast.members.len();
+        cast.members.retain(|m| m.id != id);
+
+        let removed = cast.members.len() != before;
+        if removed {
+            self.save();
+        }
+        removed
     }
 
     /// Переименовывает актёра в составе картины.
@@ -169,6 +290,7 @@ mod tests {
             video_file_name: file.into(),
             title: "Титаник".into(),
             year: Some(1997),
+            manual: false,
             members: vec![CastMember {
                 id: 6193,
                 name: name.into(),
@@ -250,6 +372,46 @@ mod tests {
 
         let cast = store.for_video("Titanic").expect("состав на месте");
         assert_eq!(cast.members[0].name, "Новое имя");
+    }
+
+    #[test]
+    fn вписанное_руками_переживает_перезапуск_и_обновление_из_базы() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let paths = DataPaths::with_root(dir.path());
+
+        let mut store = CastStore::load(paths.clone());
+        store.set_title("Фильм", "Мой фильм");
+        let id = store.add_manual_member(
+            "Фильм",
+            "Леон",
+            Some("герой".into()),
+            Some("file:C:/a.png".into()),
+        );
+        assert!(id < 0);
+        store.set_manual_mode(true);
+
+        let mut reopened = CastStore::load(paths);
+        assert!(reopened.manual_mode());
+        let cast = reopened.for_video("Фильм").expect("состав");
+        assert_eq!(cast.title, "Мой фильм");
+        assert_eq!(cast.members[0].label(), "Леон (герой)");
+
+        // Обновление из базы не стирает вписанных людей.
+        reopened.replace(состав("Фильм", "Из базы"));
+        let cast = reopened.for_video("Фильм").expect("состав");
+        assert_eq!(cast.members.len(), 2);
+        assert!(cast.members.iter().any(|m| m.name == "Леон"));
+    }
+
+    #[test]
+    fn человека_можно_убрать_и_сменить_фото() {
+        let dir = tempfile::tempdir().expect("временный каталог");
+        let mut store = CastStore::load(DataPaths::with_root(dir.path()));
+        let id = store.add_manual_member("Ф", "А", None, None);
+
+        assert!(store.set_member_photo("Ф", id, Some("file:x".into())));
+        assert!(store.remove_member("Ф", id));
+        assert!(!store.remove_member("Ф", id));
     }
 
     #[test]

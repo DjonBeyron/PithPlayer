@@ -26,7 +26,7 @@ mod watch_positions;
 pub use bookmarks::{
     BookmarkList, Bookmarks, DEFAULT_LIST, ListError, TimeBookmark, VideoBookmarks,
 };
-pub use cast::{CastMember, CastStore, VideoCast};
+pub use cast::{CastMember, CastStore, LOCAL_PHOTO, VideoCast};
 pub use cev::CevSettings;
 pub use deepl::{DeeplSettings, LANGUAGES as DEEPL_LANGUAGES};
 pub use dev::DevSettings;

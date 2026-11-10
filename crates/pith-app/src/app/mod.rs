@@ -36,6 +36,7 @@ mod language;
 mod lifecycle;
 mod list_dialog;
 mod lists;
+mod manual_cast;
 mod photos;
 mod playback;
 mod preview;

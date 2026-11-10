@@ -56,6 +56,8 @@ pub struct ActorsState {
     pub key_input: String,
     /// Фотография, раскрытая крупно.
     pub preview: Option<PhotoPreview>,
+    /// Форма ручного режима.
+    pub manual: super::manual_cast::ManualForm,
     /// Место окну уже назначено.
     ///
     /// Назначается один раз при показе: называть размер каждый кадр —
@@ -75,6 +77,7 @@ impl ActorsState {
             status: CastStatus::Idle,
             key_input: String::new(),
             preview: None,
+            manual: Default::default(),
             placed: false,
             pending: None,
         }
@@ -327,6 +330,7 @@ fn fetch(tmdb: &Tmdb, query: &pith_tmdb::Query, file_name: &str) -> Result<Video
         video_file_name: file_name.to_string(),
         title: title.name,
         year: title.year,
+        manual: false,
         members: members
             .into_iter()
             .map(|a| CastMember {

@@ -9,6 +9,7 @@ use crate::app::{CastStatus, PhotoSize, PithApp};
 use crate::theme;
 use crate::tr;
 use crate::ui::actor_rename;
+use crate::ui::actors_manual;
 use crate::ui::{actor_photo, panel_head};
 
 /// Размер окна при первом показе.
@@ -84,6 +85,14 @@ pub fn show(app: &mut PithApp, ctx: &egui::Context) {
 
 fn show_body(app: &mut PithApp, ui: &mut egui::Ui) {
     panel_head::style_boxes(ui);
+    actors_manual::show_mode_switch(app, ui);
+
+    // Ручной режим: без базы фильмов и ключа — вписываем людей сами.
+    if app.manual_mode() {
+        actors_manual::show_manual(app, ui);
+        show_cast(app, ui);
+        return;
+    }
 
     if !app.has_tmdb_key() {
         show_key_request(app, ui);
@@ -141,6 +150,17 @@ fn show_key_request(app: &mut PithApp, ui: &mut egui::Ui) {
 
     if ui.button(tr!("Сохранить ключ", "Save the key")).clicked() || entered {
         app.save_tmdb_key();
+    }
+
+    ui.add_space(14.0);
+    if ui
+        .button(tr!(
+            "Без ключа — вписывать вручную",
+            "No key — enter the cast by hand"
+        ))
+        .clicked()
+    {
+        app.set_manual_mode(true);
     }
 }
 
@@ -295,6 +315,11 @@ fn show_row(app: &mut PithApp, ui: &mut egui::Ui, member: &CastMember, photo_hei
         if ui.button(tr!("Исправить имя…", "Fix the name…")).clicked() {
             rename = true;
             ui.close();
+        }
+
+        // Вписанным руками — фото и удаление.
+        if id < 0 {
+            actors_manual::show_member_menu(app, ui, id);
         }
     });
 
