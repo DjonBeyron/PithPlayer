@@ -61,6 +61,7 @@ impl eframe::App for PithApp {
         self.check_update_quietly(ui.ctx());
         self.poll_update(ui.ctx());
         self.poll_deepl();
+        self.poll_ocr(ui.ctx());
         self.process_removals(ui.ctx());
         self.expire_resume_offer();
         self.ensure_window_on_screen(ui.ctx());
@@ -163,6 +164,7 @@ impl PithApp {
         ui::show_controls(self, ctx);
         ui::show_list_dialog(self, ctx);
         ui::show_bookmark_rename(self, ctx);
+        ui::show_ocr_zone(self, ctx);
         ui::show_clear_list_prompt(self, ctx);
         ui::show_fragment_settings(self, ctx);
         ui::show_file_types_prompt(self, ctx);

@@ -61,6 +61,17 @@ foreach ($file in @("pith-player.exe", "libmpv-2.dll")) {
     Copy-Item $path $staging
 }
 
+
+# Модели распознавания текста (OCR): кладутся рядом с плеером, если скачаны
+# в third_party\ocr-models. Нет — плеер скачает их сам при первом включении.
+$ocrModels = Join-Path $root "third_party\ocr-models"
+if (Test-Path (Join-Path $ocrModels "text-detection.onnx")) {
+    $target = Join-Path $staging "models"
+    New-Item -ItemType Directory -Force $target | Out-Null
+    Copy-Item (Join-Path $ocrModels "*.onnx") $target
+    Write-Host "вложены модели распознавания"
+}
+
 # Проверяет, что вложенный FFmpeg работает сам по себе.
 #
 # В PATH часто оказывается не сам ffmpeg, а перенаправляющий ярлык —

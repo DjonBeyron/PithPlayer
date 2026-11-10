@@ -65,7 +65,12 @@ impl PithApp {
             .or_else(|| self.recent_subtitle_line())
             .and_then(clean_name);
 
-        self.add_bookmark(time_ms, name);
+        let unnamed = name.is_none();
+
+        // Нет ни реплики, ни недавней — берём текст с кадра, если это включено.
+        if self.add_bookmark(time_ms, name) && unnamed {
+            self.ocr.queue.push(time_ms);
+        }
     }
 
     /// Ставит закладку на указанной секунде.
@@ -74,14 +79,14 @@ impl PithApp {
     /// найденного, не перематывая туда и не дожидаясь реплики.
     pub fn add_bookmark_at(&mut self, seconds: f64, name: Option<String>) {
         let time_ms = (seconds.max(0.0) * 1000.0) as i64;
-        self.add_bookmark(time_ms, name.and_then(clean_name));
+        let _ = self.add_bookmark(time_ms, name.and_then(clean_name));
     }
 
     /// Общая часть: кладёт метку в активный список и сохраняет закладки.
-    fn add_bookmark(&mut self, time_ms: i64, name: Option<String>) {
+    fn add_bookmark(&mut self, time_ms: i64, name: Option<String>) -> bool {
         let Some(key) = self.video_key() else {
             self.show_notice(crate::tr!("Файл не открыт", "No file open"));
-            return;
+            return false;
         };
 
         let duration = self.settings.fragments.duration_sec;
@@ -89,7 +94,7 @@ impl PithApp {
 
         let video = self.bookmarks.for_video_mut(&key, duration, buffer);
         let Some(list) = video.active_mut() else {
-            return;
+            return false;
         };
 
         if list.add(time_ms, name.clone()) {
@@ -108,11 +113,13 @@ impl PithApp {
                 format!("Added: {label}")
             ));
             tracing::info!(time_ms, "закладка добавлена");
+            true
         } else {
             self.show_notice(crate::tr!(
                 "Здесь уже есть закладка",
                 "There is already a bookmark here"
             ));
+            false
         }
     }
 

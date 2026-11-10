@@ -50,6 +50,17 @@ foreach ($file in $required) {
     Copy-Item $path $staging
 }
 
+
+# Модели распознавания текста (OCR): кладутся рядом с плеером, если скачаны
+# в third_party\ocr-models. Нет — плеер скачает их сам при первом включении.
+$ocrModels = Join-Path $root "third_party\ocr-models"
+if (Test-Path (Join-Path $ocrModels "text-detection.onnx")) {
+    $target = Join-Path $staging "models"
+    New-Item -ItemType Directory -Force $target | Out-Null
+    Copy-Item (Join-Path $ocrModels "*.onnx") $target
+    Write-Host "вложены модели распознавания"
+}
+
 if ($WithFfmpeg) {
     foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
         $found = (Get-Command $tool -ErrorAction SilentlyContinue).Source

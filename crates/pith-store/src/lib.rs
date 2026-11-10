@@ -16,6 +16,7 @@ mod hotkeys;
 mod language;
 mod migration;
 mod migration_v4_settings;
+mod ocr;
 mod paths;
 mod settings;
 mod subtitle_layout;
@@ -37,6 +38,7 @@ pub use hotkeys::{Binding, Command, Hotkeys};
 pub use language::Language;
 pub use migration::{MigrationReport, migrate_watch_positions};
 pub use migration_v4_settings::{migrate_bookmarks, migrate_settings, migrate_subtitle_priority};
+pub use ocr::{OcrSettings, Zone};
 pub use paths::DataPaths;
 pub use settings::{
     DEFAULT_PANEL_WIDTH, FragmentSettings, MIN_PANEL_WIDTH, Settings, WindowGeometry,

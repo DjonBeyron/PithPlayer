@@ -10,11 +10,12 @@ members = [
     "crates/pith-update",
     "crates/pith-cev",
     "crates/pith-deepl",
+    "crates/pith-ocr",
     "crates/pith-app",
 ]
 
 [workspace.package]
-version = "5.1.62"
+version = "5.2.0"
 edition = "2024"
 license = "Proprietary"
 authors = ["Pith"]

@@ -58,6 +58,16 @@ jobs:
           Get-ChildItem mv_sdk -Recurse -Filter libmpv-2.dll | Select-Object -First 1 | Copy-Item -Destination third_party/mpv
           Get-ChildItem third_party/mpv -Recurse | Select-Object FullName
 
+      - name: Модели распознавания текста
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force third_party/ocr-models | Out-Null
+          foreach ($name in "text-detection.onnx", "text-recognition.onnx") {
+            Invoke-WebRequest "https://ocrs-models.s3-accelerate.amazonaws.com/$name" -OutFile "third_party/ocr-models/$name"
+          }
+          Get-ChildItem third_party/ocr-models | Select-Object Name, Length
+
       - name: Rust (GNU)
         shell: pwsh
         run: |

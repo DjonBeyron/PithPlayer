@@ -7,6 +7,7 @@
 mod command;
 mod container;
 mod crop;
+mod frame;
 mod quiet;
 mod runner;
 mod storyboard;
@@ -15,6 +16,7 @@ mod time;
 pub use command::FragmentJob;
 pub use container::choose_container;
 pub use crop::{Crop, detect as detect_crop};
+pub use frame::{Region, capture_region};
 pub use runner::{
     ExtractionOutcome, is_ffmpeg_available, run_job, sanitize, unique_output_path, warm_up,
 };

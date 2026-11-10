@@ -272,6 +272,7 @@ fn show_list(app: &PithApp, ui: &mut egui::Ui, height: f32, actions: &mut PanelA
                     &others,
                     can_extract,
                     app.removal_left(bookmark.time_ms),
+                    app.ocr_progress(bookmark.time_ms),
                     actions,
                 );
             }

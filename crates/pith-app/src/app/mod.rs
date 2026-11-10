@@ -37,6 +37,7 @@ mod lifecycle;
 mod list_dialog;
 mod lists;
 mod manual_cast;
+mod ocr;
 mod photos;
 mod playback;
 mod preview;
@@ -73,6 +74,7 @@ pub use fragment_settings::FragmentSettingsDialog;
 pub use hotkeys::HotkeysState;
 pub use integrations::{AccessStatus, IntegrationsState};
 pub use lists::ListDialog;
+pub use ocr::{Models as OcrModels, OcrState};
 pub use photos::PhotoSize;
 pub use subtitles::SubtitleText;
 pub use update::{UpdateStage, UpdateState};
@@ -207,6 +209,8 @@ pub struct PithApp {
     pub decoder_info: String,
     /// Перевод реплик через DeepL: настройки, память и показанный перевод.
     deepl: DeeplState,
+    /// Распознавание текста с кадра для закладок без субтитров.
+    ocr: OcrState,
     /// Открытое окно выгрузки отрезков в Notion.
     export: Option<ExportDialog>,
     /// Панель отрезков показана наведением на правый край.

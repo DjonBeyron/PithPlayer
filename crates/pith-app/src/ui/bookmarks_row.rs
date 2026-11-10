@@ -23,6 +23,7 @@ pub(super) fn show(
     others: &[String],
     can_extract: bool,
     removal_left: Option<f64>,
+    ocr: Option<(f32, &str)>,
     actions: &mut PanelActions,
 ) {
     ui.horizontal(|ui| {
@@ -37,6 +38,15 @@ pub(super) fn show(
             });
         });
     });
+
+    // Идёт распознавание текста с кадра: полоса хода и стадия.
+    if let Some((progress, stage)) = ocr {
+        ui.add(
+            egui::ProgressBar::new(progress)
+                .desired_height(10.0)
+                .text(egui::RichText::new(stage).size(10.0)),
+        );
+    }
 }
 
 /// Кнопки строки: убрать, переименовать, вырезать, скопировать название.

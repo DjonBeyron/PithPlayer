@@ -1,0 +1,17 @@
+[package]
+name = "pith-ocr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Распознавание текста: OCR на чистом Rust (MIT/Apache-2.0), без внешних
+# программ и библиотек. Модели — отдельные файлы (см. `models`).
+ocrs = "0.14"
+rten = "0.28"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Загрузка моделей, если их нет в поставке.
+ureq = { version = "3", features = ["json"] }
+thiserror.workspace = true
+tracing.workspace = true

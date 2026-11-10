@@ -160,6 +160,8 @@ fn show_fragment_items(app: &mut PithApp, ui: &mut egui::Ui) {
 
 fn show_service_items(app: &mut PithApp, ui: &mut egui::Ui) {
     show_languages(app, ui);
+    super::menu_ocr::show_ocr_items(app, ui);
+    ui.separator();
 
     if ui
         .button(tr!("Интеграции…", "Integrations…"))
